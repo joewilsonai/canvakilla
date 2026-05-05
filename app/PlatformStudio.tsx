@@ -1117,6 +1117,100 @@ function drawCoverImage(
   );
 }
 
+function wantsLinkedInOperatorTypeLock(prompt: string) {
+  const normalized = prompt.toLowerCase();
+  return (
+    normalized.includes("not just talking about ai") &&
+    normalized.includes("shipping it") &&
+    normalized.includes("microsoft") &&
+    normalized.includes("amazon") &&
+    normalized.includes("rapsodo")
+  );
+}
+
+function drawSubtleGrid(context: CanvasRenderingContext2D, width: number, height: number) {
+  context.save();
+  context.lineWidth = 1;
+
+  for (let x = 0; x <= width; x += 24) {
+    context.strokeStyle = x % 96 === 0 ? "rgba(246, 238, 218, 0.055)" : "rgba(246, 238, 218, 0.026)";
+    context.beginPath();
+    context.moveTo(x, 0);
+    context.lineTo(x, height);
+    context.stroke();
+  }
+
+  for (let y = 0; y <= height; y += 24) {
+    context.strokeStyle = y % 96 === 0 ? "rgba(246, 238, 218, 0.05)" : "rgba(246, 238, 218, 0.024)";
+    context.beginPath();
+    context.moveTo(0, y);
+    context.lineTo(width, y);
+    context.stroke();
+  }
+
+  context.restore();
+}
+
+function drawMonoText(
+  context: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+) {
+  context.fillText(text, x, y);
+}
+
+function renderLinkedInOperatorTypeBanner() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1584;
+  canvas.height = 396;
+  const context = canvas.getContext("2d");
+
+  if (!context) return "";
+
+  context.fillStyle = "#20201c";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  drawSubtleGrid(context, canvas.width, canvas.height);
+
+  context.fillStyle = "rgba(0, 0, 0, 0.1)";
+  context.fillRect(192, 34, 1200, 328);
+
+  context.textBaseline = "alphabetic";
+  context.textAlign = "left";
+  context.font =
+    "700 52px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace";
+  context.fillStyle = "#f4ecd9";
+  context.shadowColor = "rgba(0, 0, 0, 0.24)";
+  context.shadowBlur = 0;
+  context.shadowOffsetX = 0;
+  context.shadowOffsetY = 1;
+
+  const textX = 790;
+  drawMonoText(context, "not just talking", textX, 116);
+  drawMonoText(context, "about AI.", textX, 176);
+  drawMonoText(context, "shipping it", textX, 236);
+
+  const periodX = textX + context.measureText("shipping it").width + 3;
+  context.fillStyle = "#b5222e";
+  drawMonoText(context, ".", periodX, 236);
+
+  context.shadowColor = "transparent";
+  context.fillStyle = "#b5222e";
+  context.fillRect(textX, 262, 92, 5);
+
+  context.font =
+    "500 28px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace";
+  context.fillStyle = "rgba(244, 236, 217, 0.48)";
+  drawMonoText(context, "microsoft \u2192 amazon \u2192 rapsodo \u2192 solo", textX, 314);
+
+  context.font =
+    "500 12px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace";
+  context.fillStyle = "rgba(244, 236, 217, 0.24)";
+  drawMonoText(context, "made with canvakilla.com", 1138, 346);
+
+  return canvas.toDataURL("image/png");
+}
+
 function drawBannerProof(context: CanvasRenderingContext2D, platform: PlatformId) {
   context.save();
 
@@ -1676,9 +1770,21 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
         throw new Error(payload.error || "No image returned.");
       }
 
-      const nextImage = `data:${payload.mimeType || "image/png"};base64,${
+      let nextImage = `data:${payload.mimeType || "image/png"};base64,${
         payload.imageBase64
       }`;
+
+      if (
+        platform === "linkedin" &&
+        editTarget === "banner" &&
+        wantsLinkedInOperatorTypeLock(prompt)
+      ) {
+        const lockedImage = renderLinkedInOperatorTypeBanner();
+        if (lockedImage) {
+          nextImage = lockedImage;
+        }
+      }
+
       const nextItem: HistoryItem = {
         id: crypto.randomUUID(),
         image: nextImage,
