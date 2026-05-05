@@ -858,6 +858,39 @@ export default function Home() {
     image.src = activeImage;
   }
 
+  async function downloadProfilePicture() {
+    if (!profileImage) return;
+
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1024;
+      canvas.height = 1024;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.fillStyle = "#111111";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      drawCoverImage(context, image, canvas.width, canvas.height);
+
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download = "x-profile-picture-1024x1024.png";
+      link.click();
+      captureClientEvent("image_downloaded", {
+        target: "profile",
+        with_template: false,
+        source: editTarget === "profile" ? "active_export" : "persistent_button",
+      });
+      setStatus("Profile PNG exported");
+    };
+    image.onerror = () => setError("Could not export this profile image.");
+    image.src = profileImage;
+  }
+
   function resetWork() {
     if (editTarget === "profile") {
       setProfileImage("");
@@ -886,6 +919,15 @@ export default function Home() {
               <h1>CanvaKilla.com</h1>
             </div>
             <span className="size-pill">{activeSize}</span>
+          </div>
+
+          <div className="quick-start-card" aria-label="How to use CanvaKilla">
+            <span className="quick-start-kicker">Make an X-safe visual</span>
+            <strong>Upload a reference, write the change, hit Iterate.</strong>
+            <p>
+              The prompt already protects the avatar crop, desktop crop, and
+              mobile follow-button zones.
+            </p>
           </div>
 
           <div className="target-switch" role="tablist" aria-label="Edit target">
@@ -985,6 +1027,17 @@ export default function Home() {
               </small>
             </span>
           </label>
+
+          <button
+            className="profile-download-button"
+            type="button"
+            onClick={downloadProfilePicture}
+            disabled={!profileImage}
+            title="Download current profile picture PNG"
+          >
+            <Download size={16} aria-hidden="true" />
+            Download Profile PNG
+          </button>
 
           <div className="field-stack">
             <div className="field-row">
