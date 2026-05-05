@@ -619,18 +619,6 @@ function LinkedInDesktopPreview(props: PlatformPreviewProps) {
                 <span>Visit my website</span>
                 <span>...</span>
               </div>
-              <div className="linkedin-open-to-grid">
-                <div>
-                  <strong>Open to work · Recruiters only</strong>
-                  <small>Greater St. Louis | On-site · Hybrid · Remote</small>
-                  <span>Show details</span>
-                </div>
-                <div>
-                  <strong>Open to volunteer for these causes</strong>
-                  <small>Animal Welfare</small>
-                  <span>Show details</span>
-                </div>
-              </div>
             </div>
           </section>
 
