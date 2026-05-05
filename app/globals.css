@@ -1315,6 +1315,7 @@ button:focus-visible,
 
 .linkedin-profile-card {
   position: relative;
+  overflow: visible;
 }
 
 .linkedin-banner {
@@ -1519,7 +1520,7 @@ button:focus-visible,
   --linkedin-avatar-left: 24px;
   --linkedin-avatar-top: 105px;
   --linkedin-avatar-size: 150px;
-  z-index: 7;
+  z-index: 30;
 }
 
 .linkedin-side-crop,
@@ -1592,11 +1593,35 @@ button:focus-visible,
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+.linkedin-side-crop > span {
+  padding: 2px 6px;
+  border: 1px solid rgba(239, 243, 244, 0.44);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.58);
+  color: white;
+  line-height: 1.05;
+  text-shadow: 0 1px 7px rgba(0, 0, 0, 0.82);
+}
+
+.linkedin-profile-label > span {
   padding: 2px 7px;
   border: 1px solid rgba(255, 77, 109, 0.65);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+
+.linkedin-side-crop.left .crop-tip-popover {
+  left: 0;
+  transform: none;
+}
+
+.linkedin-side-crop.right .crop-tip-popover {
+  right: 0;
+  left: auto;
+  transform: none;
 }
 
 .sr-only {
@@ -2555,7 +2580,7 @@ button:focus-visible,
 
 .crop-tip-popover {
   position: absolute;
-  z-index: 8;
+  z-index: 1000;
   top: 22px;
   left: 50%;
   display: grid;
