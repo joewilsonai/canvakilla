@@ -2,9 +2,7 @@
 
 An AI-powered X profile banner and profile-picture studio with Nano Banana and GPT Image 2 routed through OpenRouter.
 
-Production: https://canvakilla.vercel.app
-
-Custom domain target: https://canvakilla.com once DNS points to Vercel.
+Production: https://canvakilla.com
 
 ## Run
 
@@ -21,9 +19,12 @@ Open the local URL from the terminal. Upload optional reference images, load you
 - API keys stay on the server in `OPENROUTER_API_KEY`.
 - OpenRouter powers the image models so spend can be capped from one provider key.
 - PostHog analytics are optional; set `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` and `NEXT_PUBLIC_POSTHOG_HOST` to enable launch funnel events.
-- Link unfurls use `public/og.png` and Next Metadata Open Graph/Twitter card tags.
-- Anonymous sessions are stored in browser localStorage only for rate limiting; no login is required.
-- Default API limits are 4 generations per minute and 20 per hour per IP/session, configurable with `GENERATION_RATE_LIMIT_PER_MINUTE` and `GENERATION_RATE_LIMIT_PER_HOUR`.
+- Link unfurls use `public/og-launch.png` and Next Metadata Open Graph/Twitter card tags.
+- No login is required. Anonymous generation sessions are server-issued as signed, HttpOnly cookies.
+- Set `CANVAKILLA_SESSION_SECRET` in production so session cookies are signed independently from provider keys.
+- Default API limits are 4 generations per minute and 20 per hour per signed session, plus 8 per minute and 40 per hour per IP. Configure with `GENERATION_RATE_LIMIT_PER_MINUTE`, `GENERATION_RATE_LIMIT_PER_HOUR`, `GENERATION_IP_RATE_LIMIT_PER_MINUTE`, and `GENERATION_IP_RATE_LIMIT_PER_HOUR`.
+- `MAX_ACTIVE_GENERATIONS` limits concurrent in-process generations. For heavier launches, move rate-limit and active-generation state to a shared store such as Redis or Vercel KV because in-memory limits are per server instance.
+- Each uploaded image is capped at 8MB, and each generation request is capped at 32MB of source images.
 - Uploaded images are kept as a newest-first reference stack and are not automatically placed into the banner preview.
 - Click a reference card to insert a stable `Reference R#` instruction into the prompt.
 - Uploaded profile photos are shown in the X preview and can be iterated separately in Profile mode.

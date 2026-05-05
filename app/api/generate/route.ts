@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { captureServerEvent } from "../../../lib/posthog-server";
 
 export const runtime = "nodejs";
@@ -6,30 +9,46 @@ export const runtime = "nodejs";
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "google/gemini-3.1-flash-image-preview";
 const MAX_REFERENCE_IMAGES_PER_RUN = 12;
-const MAX_SOURCE_IMAGE_BYTES = 12 * 1024 * 1024;
+const MAX_SOURCE_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_TOTAL_SOURCE_IMAGE_BYTES = 32 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 38 * 1024 * 1024;
+const MAX_PROVIDER_IMAGE_BYTES = 18 * 1024 * 1024;
+const MAX_PROMPT_CHARS = 3_000;
+const PROVIDER_FETCH_TIMEOUT_MS = 20_000;
 const DEFAULT_MINUTE_LIMIT = 4;
 const DEFAULT_HOUR_LIMIT = 20;
+const DEFAULT_IP_MINUTE_LIMIT = 8;
+const DEFAULT_IP_HOUR_LIMIT = 40;
+const DEFAULT_MAX_ACTIVE_GENERATIONS = 8;
+const SESSION_COOKIE_NAME = "canvakilla_session";
+const SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
+const ACCEPTED_IMAGE_TYPES = new Set([
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 
 const MODEL_CONFIGS = {
   "openai/gpt-5.4-image-2": {
     label: "GPT Image 2",
-    bannerAspectRatio: "3:1",
+    bannerAspectRatio: null,
     profileAspectRatio: "1:1",
   },
   "google/gemini-3.1-flash-image-preview": {
     label: "Nano Banana 2",
-    bannerAspectRatio: "4:1",
+    bannerAspectRatio: "3:1",
     profileAspectRatio: "1:1",
     imageSize: "2K",
   },
   "google/gemini-2.5-flash-image": {
     label: "Nano Banana",
-    bannerAspectRatio: "21:9",
+    bannerAspectRatio: null,
     profileAspectRatio: "1:1",
   },
   "google/gemini-3-pro-image-preview": {
     label: "Nano Banana Pro",
-    bannerAspectRatio: "21:9",
+    bannerAspectRatio: "3:1",
     profileAspectRatio: "1:1",
     imageSize: "2K",
   },
@@ -84,6 +103,17 @@ type OpenRouterPayload = {
   usage?: unknown;
 };
 
+type SessionIdentity = {
+  id: string;
+  setCookie?: string;
+};
+
+type LimitCheck = {
+  ok: boolean;
+  resetSeconds: number;
+  message: string;
+};
+
 const globalRateState = globalThis as typeof globalThis & {
   canvaKillaRateBuckets?: Map<string, RateBucket>;
   canvaKillaActiveGenerations?: Set<string>;
@@ -95,6 +125,8 @@ const rateBuckets =
 const activeGenerations =
   globalRateState.canvaKillaActiveGenerations ||
   (globalRateState.canvaKillaActiveGenerations = new Set<string>());
+
+let lastRateCleanupAt = 0;
 
 function normalizeModelId(model: string): ModelId {
   if (model in MODEL_CONFIGS) return model as ModelId;
@@ -109,17 +141,23 @@ function getAspectRatio(model: ModelId, target: Target) {
 function getImageConfig(model: ModelId, target: Target) {
   const config = MODEL_CONFIGS[model];
   const imageConfig: {
-    aspect_ratio: string;
+    aspect_ratio?: string;
     image_size?: string;
-  } = {
-    aspect_ratio: getAspectRatio(model, target),
-  };
+  } = {};
+  const aspectRatio = getAspectRatio(model, target);
+
+  if (aspectRatio) imageConfig.aspect_ratio = aspectRatio;
 
   if ("imageSize" in config) {
     imageConfig.image_size = config.imageSize;
   }
 
-  return imageConfig;
+  return Object.keys(imageConfig).length ? imageConfig : undefined;
+}
+
+function getSafeImageMimeType(contentType: string) {
+  const mimeType = contentType.split(";")[0]?.trim().toLowerCase() || "";
+  return ACCEPTED_IMAGE_TYPES.has(mimeType) ? mimeType : "";
 }
 
 function buildBannerPrompt(
@@ -150,6 +188,7 @@ function buildBannerPrompt(
     referenceLine,
     "Create an X/Twitter profile header banner.",
     "The final export will be cropped to 1500x500 pixels, a 3:1 landscape header.",
+    "Compose the banner so the central 3:1 crop still contains the complete intended design.",
     "The lower-left quiet zone is reserved for the profile picture overlap and must not contain anything important.",
     "The lower-right mobile action zone is reserved for X mobile Follow, Edit profile, Message, and action buttons and must not contain anything important.",
     "Do not place faces, logos, readable text, hands, products, key subject details, brand marks, signatures, or the visual punchline inside either quiet zone.",
@@ -226,16 +265,69 @@ function getRequestIp(request: Request) {
   );
 }
 
-function getSessionId(formData: FormData, request: Request) {
+function getSigningSecret() {
   return (
-    String(
-      formData.get("sessionId") ||
-        request.headers.get("x-canvakilla-session") ||
-        "anonymous",
-    )
-      .replace(/[^a-zA-Z0-9_-]/g, "")
-      .slice(0, 96) || "anonymous"
+    process.env.CANVAKILLA_SESSION_SECRET ||
+    process.env.OPENROUTER_API_KEY ||
+    "canvakilla-local-development-secret"
   );
+}
+
+function signSessionId(sessionId: string) {
+  return createHmac("sha256", getSigningSecret())
+    .update(sessionId)
+    .digest("base64url");
+}
+
+function parseCookies(cookieHeader: string | null) {
+  const cookies = new Map<string, string>();
+  if (!cookieHeader) return cookies;
+
+  for (const item of cookieHeader.split(";")) {
+    const [rawName, ...rawValue] = item.trim().split("=");
+    if (!rawName || !rawValue.length) continue;
+    cookies.set(rawName, rawValue.join("="));
+  }
+
+  return cookies;
+}
+
+function verifySessionCookie(value?: string) {
+  if (!value) return "";
+  const [sessionId, signature] = value.split(".");
+  if (!sessionId || !signature || !/^[a-zA-Z0-9_-]{16,96}$/.test(sessionId)) {
+    return "";
+  }
+
+  const expected = signSessionId(sessionId);
+  const expectedBuffer = Buffer.from(expected);
+  const signatureBuffer = Buffer.from(signature);
+  if (expectedBuffer.length !== signatureBuffer.length) return "";
+
+  return timingSafeEqual(expectedBuffer, signatureBuffer) ? sessionId : "";
+}
+
+function getSessionIdentity(request: Request): SessionIdentity {
+  const cookies = parseCookies(request.headers.get("cookie"));
+  const existingId = verifySessionCookie(cookies.get(SESSION_COOKIE_NAME));
+  if (existingId) return { id: existingId };
+
+  const id = randomBytes(18).toString("base64url");
+  const secure = new URL(request.url).protocol === "https:" ? "; Secure" : "";
+  return {
+    id,
+    setCookie: `${SESSION_COOKIE_NAME}=${id}.${signSessionId(
+      id,
+    )}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_COOKIE_MAX_AGE}${secure}`,
+  };
+}
+
+function withSessionCookie<T extends NextResponse>(
+  response: T,
+  session: SessionIdentity,
+) {
+  if (session.setCookie) response.headers.append("Set-Cookie", session.setCookie);
+  return response;
 }
 
 function getLimit(name: string, fallback: number) {
@@ -243,13 +335,29 @@ function getLimit(name: string, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function checkRateLimit(clientKey: string) {
+function pruneRateBuckets(now: number) {
+  if (now - lastRateCleanupAt < 60_000) return;
+  lastRateCleanupAt = now;
+
+  for (const [key, bucket] of rateBuckets) {
+    if (now - bucket.hourStartedAt > 3_900_000) {
+      rateBuckets.delete(key);
+    }
+  }
+}
+
+function checkRateLimit(
+  clientKey: string,
+  {
+    minuteLimit,
+    hourLimit,
+  }: {
+    minuteLimit: number;
+    hourLimit: number;
+  },
+): LimitCheck {
   const now = Date.now();
-  const minuteLimit = getLimit(
-    "GENERATION_RATE_LIMIT_PER_MINUTE",
-    DEFAULT_MINUTE_LIMIT,
-  );
-  const hourLimit = getLimit("GENERATION_RATE_LIMIT_PER_HOUR", DEFAULT_HOUR_LIMIT);
+  pruneRateBuckets(now);
   const bucket =
     rateBuckets.get(clientKey) ||
     ({
@@ -304,6 +412,63 @@ function checkRateLimit(clientKey: string) {
 async function fileToDataUrl(file: File) {
   const imageBuffer = Buffer.from(await file.arrayBuffer());
   return `data:${file.type || "image/png"};base64,${imageBuffer.toString("base64")}`;
+}
+
+async function readCappedResponseBody(response: Response) {
+  if (!response.body) {
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > MAX_PROVIDER_IMAGE_BYTES) {
+      throw new Error("Provider image was too large.");
+    }
+    return buffer;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_PROVIDER_IMAGE_BYTES) {
+      await reader.cancel();
+      throw new Error("Provider image was too large.");
+    }
+    chunks.push(value);
+  }
+
+  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
+}
+
+function isPrivateIp(ip: string) {
+  if (ip === "127.0.0.1" || ip === "::1" || ip === "0.0.0.0") return true;
+  if (ip.startsWith("10.") || ip.startsWith("192.168.")) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(ip)) return true;
+  if (ip.startsWith("169.254.")) return true;
+  if (/^(fc|fd)/i.test(ip)) return true;
+  return false;
+}
+
+async function assertSafeProviderUrl(imageUrl: string) {
+  const url = new URL(imageUrl);
+  if (url.protocol !== "https:") {
+    throw new Error("Provider image URL was not secure.");
+  }
+
+  const hostType = isIP(url.hostname);
+  if (hostType && isPrivateIp(url.hostname)) {
+    throw new Error("Provider image URL was not allowed.");
+  }
+
+  if (!hostType) {
+    const records = await lookup(url.hostname, { all: true, verbatim: true });
+    if (records.some((record) => isPrivateIp(record.address))) {
+      throw new Error("Provider image URL was not allowed.");
+    }
+  }
 }
 
 function getTextNote(message?: OpenRouterMessage) {
@@ -366,23 +531,46 @@ async function imageUrlToBase64Result(imageUrl: string) {
       throw new Error("OpenRouter returned an unreadable image data URI.");
     }
 
+    const mimeType = getSafeImageMimeType(match[1]);
+    const imageBuffer = Buffer.from(match[2], "base64");
+    if (!mimeType || imageBuffer.length > MAX_PROVIDER_IMAGE_BYTES) {
+      throw new Error("OpenRouter returned an unsupported image.");
+    }
+
     return {
       imageBase64: match[2],
-      mimeType: match[1],
+      mimeType,
     };
   }
 
-  const response = await fetch(imageUrl);
+  await assertSafeProviderUrl(imageUrl);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PROVIDER_FETCH_TIMEOUT_MS);
+
+  const response = await fetch(imageUrl, {
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeout));
+
   if (!response.ok) {
     throw new Error("OpenRouter returned an image URL that could not be fetched.");
   }
 
   const contentType = response.headers.get("content-type") || "image/png";
-  const imageBuffer = Buffer.from(await response.arrayBuffer());
+  const mimeType = getSafeImageMimeType(contentType);
+  const contentLength = Number.parseInt(
+    response.headers.get("content-length") || "",
+    10,
+  );
+
+  if (!mimeType || contentLength > MAX_PROVIDER_IMAGE_BYTES) {
+    throw new Error("OpenRouter returned an unsupported image.");
+  }
+
+  const imageBuffer = await readCappedResponseBody(response);
 
   return {
     imageBase64: imageBuffer.toString("base64"),
-    mimeType: contentType,
+    mimeType,
   };
 }
 
@@ -405,7 +593,7 @@ async function generateWithOpenRouter({
 
   if (!apiKey) {
     return NextResponse.json(
-      { error: "Missing OPENROUTER_API_KEY in the server environment." },
+      { error: "Image generation is temporarily unavailable." },
       { status: 500 },
     );
   }
@@ -425,6 +613,13 @@ async function generateWithOpenRouter({
 
   for (const image of images) {
     content.push({
+      type: "text",
+      text:
+        image.label === "current"
+          ? `Current ${target} image follows.`
+          : `Reference ${image.label || "image"} follows.`,
+    });
+    content.push({
       type: "image_url",
       image_url: {
         url: await fileToDataUrl(image.file),
@@ -433,6 +628,7 @@ async function generateWithOpenRouter({
   }
 
   try {
+    const imageConfig = getImageConfig(model, target);
     const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
       headers: {
@@ -450,10 +646,10 @@ async function generateWithOpenRouter({
           },
         ],
         modalities: ["image", "text"],
-        image_config: getImageConfig(model, target),
+        ...(imageConfig ? { image_config: imageConfig } : {}),
       }),
     });
-    const payload = (await response.json()) as OpenRouterPayload;
+    const payload = (await response.json().catch(() => ({}))) as OpenRouterPayload;
 
     if (!response.ok) {
       throw new Error(
@@ -495,10 +691,7 @@ async function generateWithOpenRouter({
     console.error(error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "The OpenRouter image request failed.",
+        error: "Image generation failed. Try a smaller image or a different prompt.",
       },
       { status: 500 },
     );
@@ -506,27 +699,74 @@ async function generateWithOpenRouter({
 }
 
 export async function POST(request: Request) {
-  const formData = await request.formData();
+  const session = getSessionIdentity(request);
+  const contentLength = Number.parseInt(request.headers.get("content-length") || "", 10);
+
+  if (contentLength > MAX_REQUEST_BYTES) {
+    return withSessionCookie(
+      NextResponse.json(
+        { error: "Keep total uploads under 32MB for each generation." },
+        { status: 413 },
+      ),
+      session,
+    );
+  }
+
+  let formData: FormData;
+  try {
+    formData = await request.formData();
+  } catch {
+    return withSessionCookie(
+      NextResponse.json(
+        { error: "Could not read that upload. Try smaller PNG, JPEG, WebP, or GIF files." },
+        { status: 400 },
+      ),
+      session,
+    );
+  }
   const prompt = String(formData.get("prompt") || "").trim();
   const requestedTarget = String(formData.get("target") || "banner");
   const target: Target = requestedTarget === "profile" ? "profile" : "banner";
   const model = normalizeModelId(String(formData.get("model") || DEFAULT_MODEL));
-  const sessionId = getSessionId(formData, request);
-  const clientKey = `${getRequestIp(request)}:${sessionId}`;
+  const requestIp = getRequestIp(request);
+  const sessionKey = `session:${session.id}`;
+  const ipKey = `ip:${requestIp}`;
   const currentImage = formData.get("currentImage");
   const referenceImages = formData
     .getAll("referenceImages")
-    .filter((image): image is File => image instanceof File && image.size > 0)
-    .slice(0, MAX_REFERENCE_IMAGES_PER_RUN);
+    .filter((image): image is File => image instanceof File && image.size > 0);
   const referenceLabels = formData
     .getAll("referenceLabels")
     .map((label) => String(label))
-    .slice(0, referenceImages.length);
+    .slice(0, Math.min(referenceImages.length, MAX_REFERENCE_IMAGES_PER_RUN));
 
   if (!prompt) {
-    return NextResponse.json(
-      { error: "Add an edit prompt before generating." },
-      { status: 400 },
+    return withSessionCookie(
+      NextResponse.json(
+        { error: "Add an edit prompt before generating." },
+        { status: 400 },
+      ),
+      session,
+    );
+  }
+
+  if (prompt.length > MAX_PROMPT_CHARS) {
+    return withSessionCookie(
+      NextResponse.json(
+        { error: `Keep prompts under ${MAX_PROMPT_CHARS.toLocaleString()} characters.` },
+        { status: 400 },
+      ),
+      session,
+    );
+  }
+
+  if (referenceImages.length > MAX_REFERENCE_IMAGES_PER_RUN) {
+    return withSessionCookie(
+      NextResponse.json(
+        { error: `Send at most ${MAX_REFERENCE_IMAGES_PER_RUN} references per run.` },
+        { status: 400 },
+      ),
+      session,
     );
   }
 
@@ -540,26 +780,82 @@ export async function POST(request: Request) {
     images.push({ file, label: referenceLabels[index] || `R${index + 1}` });
   });
 
-  for (const image of images) {
-    if (!image.file.type.startsWith("image/")) {
-      return NextResponse.json(
-        { error: "Upload a PNG, JPEG, WebP, or GIF image." },
+  const totalImageBytes = images.reduce((total, image) => total + image.file.size, 0);
+  if (totalImageBytes > MAX_TOTAL_SOURCE_IMAGE_BYTES) {
+    return withSessionCookie(
+      NextResponse.json(
+        { error: "Keep all source images under 32MB total for each generation." },
         { status: 400 },
+      ),
+      session,
+    );
+  }
+
+  for (const image of images) {
+    if (!ACCEPTED_IMAGE_TYPES.has(image.file.type)) {
+      return withSessionCookie(
+        NextResponse.json(
+          { error: "Upload a PNG, JPEG, WebP, or GIF image." },
+          { status: 400 },
+        ),
+        session,
       );
     }
 
     if (image.file.size > MAX_SOURCE_IMAGE_BYTES) {
-      return NextResponse.json(
-        { error: "Keep source images under 12MB." },
-        { status: 400 },
+      return withSessionCookie(
+        NextResponse.json(
+          { error: "Keep each source image under 8MB." },
+          { status: 400 },
+        ),
+        session,
       );
     }
   }
 
-  const rateLimit = checkRateLimit(clientKey);
+  const maxActiveGenerations = getLimit(
+    "MAX_ACTIVE_GENERATIONS",
+    DEFAULT_MAX_ACTIVE_GENERATIONS,
+  );
+
+  if (activeGenerations.size >= maxActiveGenerations) {
+    return withSessionCookie(
+      NextResponse.json(
+        { error: "CanvaKilla is busy. Try again in a minute." },
+        { status: 429, headers: { "Retry-After": "60" } },
+      ),
+      session,
+    );
+  }
+
+  if (activeGenerations.has(sessionKey) || activeGenerations.has(ipKey)) {
+    return withSessionCookie(
+      NextResponse.json(
+        { error: "A generation is already running for this browser or network." },
+        { status: 429, headers: { "Retry-After": "30" } },
+      ),
+      session,
+    );
+  }
+
+  const ipRateLimit = checkRateLimit(ipKey, {
+    minuteLimit: getLimit("GENERATION_IP_RATE_LIMIT_PER_MINUTE", DEFAULT_IP_MINUTE_LIMIT),
+    hourLimit: getLimit("GENERATION_IP_RATE_LIMIT_PER_HOUR", DEFAULT_IP_HOUR_LIMIT),
+  });
+
+  const rateLimit = ipRateLimit.ok
+    ? checkRateLimit(sessionKey, {
+        minuteLimit: getLimit(
+          "GENERATION_RATE_LIMIT_PER_MINUTE",
+          DEFAULT_MINUTE_LIMIT,
+        ),
+        hourLimit: getLimit("GENERATION_RATE_LIMIT_PER_HOUR", DEFAULT_HOUR_LIMIT),
+      })
+    : ipRateLimit;
+
   if (!rateLimit.ok) {
     captureServerEvent({
-      distinctId: sessionId,
+      distinctId: session.id,
       event: "generation_rate_limited",
       properties: {
         model,
@@ -568,36 +864,35 @@ export async function POST(request: Request) {
         reset_seconds: rateLimit.resetSeconds,
       },
     });
-    return NextResponse.json(
-      { error: rateLimit.message },
-      {
-        status: 429,
-        headers: {
-          "Retry-After": String(rateLimit.resetSeconds),
+    return withSessionCookie(
+      NextResponse.json(
+        { error: rateLimit.message },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(rateLimit.resetSeconds),
+          },
         },
-      },
+      ),
+      session,
     );
   }
 
-  if (activeGenerations.has(clientKey)) {
-    return NextResponse.json(
-      { error: "A generation is already running in this browser session." },
-      { status: 429 },
-    );
-  }
-
-  activeGenerations.add(clientKey);
+  activeGenerations.add(sessionKey);
+  activeGenerations.add(ipKey);
 
   try {
-    return await generateWithOpenRouter({
+    const response = await generateWithOpenRouter({
       images,
       model,
       prompt,
       referenceLabels,
       target,
-      distinctId: sessionId,
+      distinctId: session.id,
     });
+    return withSessionCookie(response, session);
   } finally {
-    activeGenerations.delete(clientKey);
+    activeGenerations.delete(sessionKey);
+    activeGenerations.delete(ipKey);
   }
 }

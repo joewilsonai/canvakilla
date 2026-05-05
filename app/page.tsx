@@ -108,8 +108,16 @@ function GrokIcon({
 const WORKSPACE_DB = "x-banner-maker";
 const WORKSPACE_STORE = "workspace";
 const WORKSPACE_KEY = "current";
-const CLIENT_SESSION_KEY = "canvakilla-session-id";
 const MAX_REFERENCE_IMAGES_PER_RUN = 12;
+const MAX_STORED_REFERENCE_IMAGES = 24;
+const MAX_CLIENT_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_CLIENT_TOTAL_IMAGE_BYTES = 32 * 1024 * 1024;
+const ACCEPTED_CLIENT_IMAGE_TYPES = new Set([
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 
 const MODELS = [
   {
@@ -361,21 +369,15 @@ function normalizeModelId(modelId: string) {
   return MODELS.some((item) => item.id === nextModel) ? nextModel : MODELS[0].id;
 }
 
-function getClientSessionId() {
-  if (typeof window === "undefined") return "server";
-
-  const existingSession = window.localStorage.getItem(CLIENT_SESSION_KEY);
-  if (existingSession) return existingSession;
-
-  const nextSession = crypto.randomUUID();
-  window.localStorage.setItem(CLIENT_SESSION_KEY, nextSession);
-  return nextSession;
-}
-
 async function readWorkspaceState() {
   if (typeof indexedDB === "undefined") return null;
 
-  const db = await openWorkspaceDb();
+  let db: IDBDatabase;
+  try {
+    db = await openWorkspaceDb();
+  } catch {
+    return null;
+  }
 
   try {
     return await new Promise<PersistedWorkspace | null>((resolve, reject) => {
@@ -395,7 +397,12 @@ async function readWorkspaceState() {
 async function writeWorkspaceState(state: PersistedWorkspace) {
   if (typeof indexedDB === "undefined") return;
 
-  const db = await openWorkspaceDb();
+  let db: IDBDatabase;
+  try {
+    db = await openWorkspaceDb();
+  } catch {
+    return;
+  }
 
   try {
     await new Promise<void>((resolve, reject) => {
@@ -425,6 +432,11 @@ function getNextReferenceNumber(references: ReferenceItem[]) {
     const number = Number(reference.label.replace(/^R/, ""));
     return Number.isFinite(number) ? Math.max(max, number) : max;
   }, 0);
+}
+
+function getDataUrlBytes(dataUrl: string) {
+  const base64 = dataUrl.split(",")[1] || "";
+  return Math.ceil((base64.length * 3) / 4);
 }
 
 async function dataUrlToFile(dataUrl: string, name: string) {
@@ -572,7 +584,7 @@ export default function Home() {
         if (!isMounted || !savedState) return;
 
         if (Array.isArray(savedState.references) && savedState.references.length) {
-          setReferences(savedState.references);
+          setReferences(savedState.references.slice(0, MAX_STORED_REFERENCE_IMAGES));
         } else if (savedState.sourceImage) {
           setReferences([
             {
@@ -656,13 +668,37 @@ export default function Home() {
   ]);
 
   async function handleFiles(files: FileList | null) {
-    const imageFiles = Array.from(files || []).filter((file) =>
-      file.type.startsWith("image/"),
+    const selectedFiles = Array.from(files || []);
+    const imageFiles = selectedFiles.filter((file) =>
+      ACCEPTED_CLIENT_IMAGE_TYPES.has(file.type),
     );
 
     if (!imageFiles.length) return;
-    if (imageFiles.length !== files?.length) {
-      setError("Only PNG, JPEG, and WebP images were added.");
+    if (imageFiles.length !== selectedFiles.length) {
+      setError("Only PNG, JPEG, WebP, and GIF images can be added.");
+      return;
+    }
+
+    if (imageFiles.length > MAX_REFERENCE_IMAGES_PER_RUN) {
+      setError(`Add at most ${MAX_REFERENCE_IMAGES_PER_RUN} references at a time.`);
+      return;
+    }
+
+    const oversizedFile = imageFiles.find(
+      (file) => file.size > MAX_CLIENT_IMAGE_BYTES,
+    );
+    if (oversizedFile) {
+      setError(`Keep each image under 8MB. ${oversizedFile.name} is too large.`);
+      return;
+    }
+
+    const existingBytes = references.reduce(
+      (total, reference) => total + getDataUrlBytes(reference.image),
+      0,
+    );
+    const newBytes = imageFiles.reduce((total, file) => total + file.size, 0);
+    if (existingBytes + newBytes > MAX_CLIENT_TOTAL_IMAGE_BYTES) {
+      setError("Keep saved references under 32MB total. Remove a few or use smaller files.");
       return;
     }
 
@@ -680,7 +716,9 @@ export default function Home() {
       })),
     );
 
-    setReferences((items) => [...nextReferences.reverse(), ...items]);
+    setReferences((items) =>
+      [...nextReferences.reverse(), ...items].slice(0, MAX_STORED_REFERENCE_IMAGES),
+    );
     captureClientEvent("reference_images_added", {
       count: imageFiles.length,
     });
@@ -695,8 +733,13 @@ export default function Home() {
   async function handleProfileFiles(files: FileList | null) {
     const file = files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Choose a PNG, JPEG, or WebP profile image.");
+    if (!ACCEPTED_CLIENT_IMAGE_TYPES.has(file.type)) {
+      setError("Choose a PNG, JPEG, WebP, or GIF profile image.");
+      return;
+    }
+
+    if (file.size > MAX_CLIENT_IMAGE_BYTES) {
+      setError("Keep the profile image under 8MB.");
       return;
     }
 
@@ -769,7 +812,6 @@ export default function Home() {
       formData.append("prompt", prompt.trim());
       formData.append("model", model);
       formData.append("target", editTarget);
-      formData.append("sessionId", getClientSessionId());
 
       if (editTarget === "banner" && currentImage) {
         formData.append(
@@ -797,9 +839,6 @@ export default function Home() {
 
       const response = await fetch("/api/generate", {
         method: "POST",
-        headers: {
-          "X-CanvaKilla-Session": getClientSessionId(),
-        },
         body: formData,
       });
       const payload = (await response.json()) as GenerateResponse;
@@ -979,12 +1018,11 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="target-switch" role="tablist" aria-label="Edit target">
+          <div className="target-switch" role="group" aria-label="Edit target">
             <button
               className={editTarget === "banner" ? "is-active" : ""}
               type="button"
-              role="tab"
-              aria-selected={editTarget === "banner"}
+              aria-pressed={editTarget === "banner"}
               onClick={() => switchEditTarget("banner")}
             >
               <Layers size={16} aria-hidden="true" />
@@ -993,8 +1031,7 @@ export default function Home() {
             <button
               className={editTarget === "profile" ? "is-active" : ""}
               type="button"
-              role="tab"
-              aria-selected={editTarget === "profile"}
+              aria-pressed={editTarget === "profile"}
               onClick={() => switchEditTarget("profile")}
             >
               <ImagePlus size={16} aria-hidden="true" />
@@ -1010,7 +1047,7 @@ export default function Home() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept="image/png,image/jpeg,image/webp,image/gif"
               multiple
               onChange={(event) => handleFiles(event.target.files)}
             />
@@ -1057,7 +1094,7 @@ export default function Home() {
             <input
               ref={profileInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept="image/png,image/jpeg,image/webp,image/gif"
               onChange={(event) => handleProfileFiles(event.target.files)}
             />
             <span className="profile-thumb" data-empty={!profileImage}>
@@ -1212,14 +1249,13 @@ export default function Home() {
             </div>
             <div
               className="preview-mode-switch"
-              role="tablist"
+              role="group"
               aria-label="Preview layout"
             >
               <button
                 className={previewMode === "desktop" ? "is-active" : ""}
                 type="button"
-                role="tab"
-                aria-selected={previewMode === "desktop"}
+                aria-pressed={previewMode === "desktop"}
                 onClick={() => setPreviewMode("desktop")}
               >
                 <Monitor size={16} aria-hidden="true" />
@@ -1228,8 +1264,7 @@ export default function Home() {
               <button
                 className={previewMode === "mobile" ? "is-active" : ""}
                 type="button"
-                role="tab"
-                aria-selected={previewMode === "mobile"}
+                aria-pressed={previewMode === "mobile"}
                 onClick={() => setPreviewMode("mobile")}
               >
                 <Smartphone size={16} aria-hidden="true" />
@@ -1286,9 +1321,9 @@ export default function Home() {
                   <CircleEllipsis size={24} aria-hidden="true" />
                   More
                 </span>
-                <button className="x-post-button" type="button">
+                <span className="x-post-button" aria-hidden="true">
                   Post
-                </button>
+                </span>
                 <div className="x-account-mini">
                   <span className="x-account-avatar">
                     {profileImage ? <img src={profileImage} alt="" /> : null}
@@ -1303,9 +1338,9 @@ export default function Home() {
 
               <div className="x-center-column">
                 <div className="x-real-topbar">
-                  <button type="button">
+                  <span className="x-round-button" aria-hidden="true">
                     <ArrowLeft size={20} aria-hidden="true" />
-                  </button>
+                  </span>
                   <div>
                     <h2>
                       Banner Preview <span className="verified-badge">✓</span>
@@ -1366,15 +1401,15 @@ export default function Home() {
                     )}
                   </div>
                   <div className="x-real-actions">
-                    <button type="button">
+                    <span className="x-round-button" aria-hidden="true">
                       <CircleEllipsis size={20} aria-hidden="true" />
-                    </button>
-                    <button type="button">
+                    </span>
+                    <span className="x-round-button" aria-hidden="true">
                       <MessageCircle size={20} aria-hidden="true" />
-                    </button>
-                    <button className="x-follow-button" type="button">
+                    </span>
+                    <span className="x-follow-button" aria-hidden="true">
                       Follow
-                    </button>
+                    </span>
                   </div>
                   <h3>
                     Joe Wilson <span className="verified-badge">✓</span>
@@ -1403,7 +1438,7 @@ export default function Home() {
                   </p>
                 </section>
 
-                <div className="x-tabs" role="tablist" aria-label="Profile tabs">
+                <div className="x-tabs" aria-label="Profile tabs">
                   <span className="is-active">Posts</span>
                   <span>Replies</span>
                   <span>Highlights</span>
@@ -1431,7 +1466,7 @@ export default function Home() {
                       <small>@is_dog_ok</small>
                       <small>investigating dogs in viral videos. day 1,247.</small>
                     </span>
-                    <button type="button">Follow</button>
+                    <span className="x-follow-button" aria-hidden="true">Follow</span>
                   </div>
                   <div className="x-suggested-user">
                     <span className="x-suggested-avatar second" />
@@ -1442,7 +1477,7 @@ export default function Home() {
                       <small>@hesthefounder</small>
                       <small>I am a founder. that is my job.</small>
                     </span>
-                    <button type="button">Follow</button>
+                    <span className="x-follow-button" aria-hidden="true">Follow</span>
                   </div>
                   <div className="x-suggested-user">
                     <span className="x-suggested-avatar third" />
@@ -1454,11 +1489,11 @@ export default function Home() {
                       <small>@garfieldlegal</small>
                       <small>litigating on behalf of Garfield since 2019.</small>
                     </span>
-                    <button type="button">Follow</button>
+                    <span className="x-follow-button" aria-hidden="true">Follow</span>
                   </div>
-                  <button className="x-link-button" type="button">
+                  <span className="x-link-button" aria-hidden="true">
                     Show more
-                  </button>
+                  </span>
                 </section>
                 <section>
                   <h3>What's happening</h3>
@@ -1482,9 +1517,9 @@ export default function Home() {
                     my CLAUDE.md
                     <small>12.1K posts</small>
                   </p>
-                  <button className="x-link-button" type="button">
+                  <span className="x-link-button" aria-hidden="true">
                     Show more
-                  </button>
+                  </span>
                 </section>
               </aside>
             </div>
@@ -1510,9 +1545,9 @@ export default function Home() {
                   </span>
                 </div>
                 <div className="x-phone-nav">
-                  <button type="button">
+                  <span className="x-round-button" aria-hidden="true">
                     <ArrowLeft size={24} aria-hidden="true" />
-                  </button>
+                  </span>
                   <span>
                     <GrokIcon size={25} />
                     <Search size={25} aria-hidden="true" />
@@ -1554,12 +1589,12 @@ export default function Home() {
                     )}
                   </div>
                   <div className="x-mobile-actions">
-                    <button type="button">
+                    <span className="x-round-button" aria-hidden="true">
                       <MessageCircle size={26} aria-hidden="true" />
-                    </button>
-                    <button className="x-follow-button" type="button">
+                    </span>
+                    <span className="x-follow-button" aria-hidden="true">
                       Follow
-                    </button>
+                    </span>
                   </div>
                   <h3>
                     Joe Wilson <span className="verified-badge">✓</span>
@@ -1595,7 +1630,7 @@ export default function Home() {
                     </span>
                     <p>Followed by Wes Roth, Vivi, Keith Sakata, MD, and 39 others</p>
                   </div>
-                  <div className="x-tabs x-mobile-tabs" role="tablist">
+                  <div className="x-tabs x-mobile-tabs">
                     <span className="is-active">Posts</span>
                     <span>Replies</span>
                     <span>Highlights</span>
