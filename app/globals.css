@@ -207,6 +207,7 @@ button:disabled {
   font-size: 13px;
   font-weight: 900;
   text-decoration: none;
+  text-transform: none;
 }
 
 .platform-tabs a.is-active {
@@ -1515,7 +1516,8 @@ button:focus-visible,
 
 .linkedin-side-crop,
 .linkedin-safe-zone,
-.linkedin-profile-zone {
+.linkedin-profile-zone,
+.linkedin-profile-label {
   position: absolute;
   display: grid;
   place-items: center;
@@ -1567,11 +1569,28 @@ button:focus-visible,
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.58);
 }
 
+.linkedin-profile-label {
+  left: 3.2%;
+  top: 39%;
+  z-index: 4;
+  color: white;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.58);
+}
+
 .linkedin-side-crop > span,
-.linkedin-profile-zone > span {
+.linkedin-profile-label > span {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 .linkedin-mobile-stage {
@@ -1642,6 +1661,12 @@ button:focus-visible,
 
 .linkedin-template.is-mobile .linkedin-profile-zone {
   width: 14%;
+}
+
+.linkedin-template.is-mobile .linkedin-profile-label {
+  left: 3%;
+  top: 36%;
+  font-size: 9px;
 }
 
 .linkedin-template.is-mobile .linkedin-side-crop {

@@ -472,6 +472,9 @@ function LinkedInTemplateLayer({
         <span>mobile safe zone</span>
       </div>
       <div className="linkedin-profile-zone">
+        <span className="sr-only">LinkedIn profile photo overlay zone</span>
+      </div>
+      <div className="linkedin-profile-label">
         <span>
           profile photo
           <CropGuardTooltip
@@ -1052,7 +1055,7 @@ function drawBannerProof(context: CanvasRenderingContext2D, platform: PlatformId
     context.fillText("CROP GUARD", 34, 27);
     context.fillText("CROP GUARD", 34, 385);
     context.fillText("MOBILE SAFE ZONE", 612, 58);
-    context.fillText("PROFILE PHOTO", 52, 292);
+    context.fillText("PROFILE PHOTO", 36, 206);
     context.font = "700 21px Arial";
     context.fillText("SIDE CROP", 28, 188);
     context.fillText("SIDE CROP", 1430, 188);
