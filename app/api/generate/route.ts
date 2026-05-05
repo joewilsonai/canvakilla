@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import sharp from "sharp";
 import { captureServerEvent } from "../../../lib/posthog-server";
 
 export const runtime = "nodejs";
@@ -13,6 +14,7 @@ const MAX_SOURCE_IMAGE_BYTES = 2 * 1024 * 1024;
 const MAX_TOTAL_SOURCE_IMAGE_BYTES = 3.6 * 1024 * 1024;
 const MAX_REQUEST_BYTES = 4 * 1024 * 1024;
 const MAX_PROVIDER_IMAGE_BYTES = 18 * 1024 * 1024;
+const MAX_RESPONSE_IMAGE_BYTES = 2.5 * 1024 * 1024;
 const MAX_PROMPT_CHARS = 3_000;
 const PROVIDER_FETCH_TIMEOUT_MS = 20_000;
 const OPENROUTER_FETCH_TIMEOUT_MS = 70_000;
@@ -26,6 +28,10 @@ const DEFAULT_MINUTE_LIMIT = 4;
 const DEFAULT_HOUR_LIMIT = 20;
 const DEFAULT_IP_MINUTE_LIMIT = 8;
 const DEFAULT_IP_HOUR_LIMIT = 40;
+const DEFAULT_COST_MINUTE_LIMIT = 10;
+const DEFAULT_COST_HOUR_LIMIT = 48;
+const DEFAULT_IP_COST_MINUTE_LIMIT = 16;
+const DEFAULT_IP_COST_HOUR_LIMIT = 96;
 const DEFAULT_MAX_ACTIVE_GENERATIONS = 8;
 const SESSION_COOKIE_NAME = "canvakilla_session";
 const SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
@@ -72,6 +78,13 @@ const LEGACY_MODEL_IDS: Record<string, ModelId> = {
   "gemini-3-pro-image-preview": "google/gemini-3-pro-image-preview",
 };
 
+const MODEL_COST_WEIGHTS: Record<ModelId, number> = {
+  "google/gemini-2.5-flash-image": 1,
+  "google/gemini-3.1-flash-image-preview": 2,
+  "openai/gpt-5.4-image-2": 4,
+  "google/gemini-3-pro-image-preview": 8,
+};
+
 type ModelId = keyof typeof MODEL_CONFIGS;
 type Target = "banner" | "profile";
 type ImageMimeType = "image/jpeg" | "image/png" | "image/webp";
@@ -92,8 +105,10 @@ type ImageInput = {
 type RateBucket = {
   minuteStartedAt: number;
   minuteCount: number;
+  minuteCost: number;
   hourStartedAt: number;
   hourCount: number;
+  hourCost: number;
 };
 
 type OpenRouterImage = {
@@ -195,6 +210,11 @@ function getImageConfig(model: ModelId, target: Target) {
   }
 
   return Object.keys(imageConfig).length ? imageConfig : undefined;
+}
+
+function getModelCost(model: ModelId, imageCount: number) {
+  const referenceCost = Math.max(0, imageCount - 1);
+  return MODEL_COST_WEIGHTS[model] + referenceCost;
 }
 
 function getSafeImageMimeType(contentType: string): ImageMimeType | "" {
@@ -450,9 +470,15 @@ function pruneRateBuckets(now: number) {
 function checkRateLimit(
   clientKey: string,
   {
+    cost,
+    costHourLimit,
+    costMinuteLimit,
     minuteLimit,
     hourLimit,
   }: {
+    cost: number;
+    costHourLimit: number;
+    costMinuteLimit: number;
     minuteLimit: number;
     hourLimit: number;
   },
@@ -464,18 +490,22 @@ function checkRateLimit(
     ({
       minuteStartedAt: now,
       minuteCount: 0,
+      minuteCost: 0,
       hourStartedAt: now,
       hourCount: 0,
+      hourCost: 0,
     } satisfies RateBucket);
 
   if (now - bucket.minuteStartedAt >= 60_000) {
     bucket.minuteStartedAt = now;
     bucket.minuteCount = 0;
+    bucket.minuteCost = 0;
   }
 
   if (now - bucket.hourStartedAt >= 3_600_000) {
     bucket.hourStartedAt = now;
     bucket.hourCount = 0;
+    bucket.hourCost = 0;
   }
 
   if (bucket.minuteCount >= minuteLimit) {
@@ -501,8 +531,33 @@ function checkRateLimit(
     };
   }
 
+  if (bucket.minuteCost + cost > costMinuteLimit) {
+    const resetSeconds = Math.max(
+      1,
+      Math.ceil((60_000 - (now - bucket.minuteStartedAt)) / 1000),
+    );
+    return {
+      ok: false,
+      resetSeconds,
+      message: `This model is temporarily capped. Try again in about ${resetSeconds} seconds or switch to a cheaper model.`,
+    };
+  }
+
+  if (bucket.hourCost + cost > costHourLimit) {
+    return {
+      ok: false,
+      resetSeconds: Math.max(
+        1,
+        Math.ceil((3_600_000 - (now - bucket.hourStartedAt)) / 1000),
+      ),
+      message: "Hourly model budget reached. Try a cheaper model or come back later.",
+    };
+  }
+
   bucket.minuteCount += 1;
   bucket.hourCount += 1;
+  bucket.minuteCost += cost;
+  bucket.hourCost += cost;
   rateBuckets.set(clientKey, bucket);
 
   return {
@@ -913,6 +968,52 @@ function validateProviderImageBuffer(
   };
 }
 
+async function normalizeProviderImageResult(
+  imageBuffer: Buffer,
+  advertisedMimeType: string,
+  target: Target,
+) {
+  validateProviderImageBuffer(imageBuffer, advertisedMimeType, target);
+
+  const resize =
+    target === "profile"
+      ? { width: 1024, height: 1024 }
+      : { width: 1500, height: 500 };
+  const qualitySteps = [88, 78, 68, 58, 48];
+  let lastOutput = imageBuffer;
+
+  for (const quality of qualitySteps) {
+    const output = await sharp(imageBuffer, { limitInputPixels: MAX_PROVIDER_IMAGE_PIXELS })
+      .resize({
+        ...resize,
+        fit: "cover",
+        position: "center",
+      })
+      .flatten({ background: "#111111" })
+      .jpeg({ quality, mozjpeg: true })
+      .toBuffer();
+
+    lastOutput = output;
+    if (output.length <= MAX_RESPONSE_IMAGE_BYTES) {
+      validateProviderImageBuffer(output, "image/jpeg", target);
+      return {
+        imageBase64: output.toString("base64"),
+        mimeType: "image/jpeg" as const,
+      };
+    }
+  }
+
+  if (lastOutput.length > MAX_RESPONSE_IMAGE_BYTES) {
+    throw new Error("Provider image was too large.");
+  }
+
+  validateProviderImageBuffer(lastOutput, "image/jpeg", target);
+  return {
+    imageBase64: lastOutput.toString("base64"),
+    mimeType: "image/jpeg" as const,
+  };
+}
+
 async function fetchWithTimeout(
   url: string,
   init: RequestInit,
@@ -940,12 +1041,7 @@ async function imageUrlToBase64Result(imageUrl: string, target: Target) {
     }
 
     const imageBuffer = Buffer.from(match[2], "base64");
-    const { mimeType } = validateProviderImageBuffer(imageBuffer, match[1], target);
-
-    return {
-      imageBase64: imageBuffer.toString("base64"),
-      mimeType,
-    };
+    return normalizeProviderImageResult(imageBuffer, match[1], target);
   }
 
   const url = await assertSafeProviderUrl(imageUrl);
@@ -976,12 +1072,7 @@ async function imageUrlToBase64Result(imageUrl: string, target: Target) {
   }
 
   const imageBuffer = await readCappedResponseBody(response);
-  const { mimeType } = validateProviderImageBuffer(imageBuffer, contentType, target);
-
-  return {
-    imageBase64: imageBuffer.toString("base64"),
-    mimeType,
-  };
+  return normalizeProviderImageResult(imageBuffer, contentType, target);
 }
 
 function isRetryableStatus(status: number) {
@@ -1361,13 +1452,32 @@ export async function POST(request: Request) {
     );
   }
 
+  const modelCost = getModelCost(model, images.length);
   const ipRateLimit = checkRateLimit(ipKey, {
+    cost: modelCost,
+    costMinuteLimit: getLimit(
+      "GENERATION_IP_COST_LIMIT_PER_MINUTE",
+      DEFAULT_IP_COST_MINUTE_LIMIT,
+    ),
+    costHourLimit: getLimit(
+      "GENERATION_IP_COST_LIMIT_PER_HOUR",
+      DEFAULT_IP_COST_HOUR_LIMIT,
+    ),
     minuteLimit: getLimit("GENERATION_IP_RATE_LIMIT_PER_MINUTE", DEFAULT_IP_MINUTE_LIMIT),
     hourLimit: getLimit("GENERATION_IP_RATE_LIMIT_PER_HOUR", DEFAULT_IP_HOUR_LIMIT),
   });
 
   const rateLimit = ipRateLimit.ok
     ? checkRateLimit(sessionKey, {
+        cost: modelCost,
+        costMinuteLimit: getLimit(
+          "GENERATION_COST_LIMIT_PER_MINUTE",
+          DEFAULT_COST_MINUTE_LIMIT,
+        ),
+        costHourLimit: getLimit(
+          "GENERATION_COST_LIMIT_PER_HOUR",
+          DEFAULT_COST_HOUR_LIMIT,
+        ),
         minuteLimit: getLimit(
           "GENERATION_RATE_LIMIT_PER_MINUTE",
           DEFAULT_MINUTE_LIMIT,

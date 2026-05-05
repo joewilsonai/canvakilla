@@ -1,3 +1,4 @@
+import { waitUntil } from "@vercel/functions";
 import { PostHog } from "posthog-node";
 
 let posthogClient: PostHog | null = null;
@@ -35,4 +36,9 @@ export function captureServerEvent(args: {
   const client = getPostHogClient();
   if (!client) return;
   client.capture(args);
+  waitUntil(
+    client.flush().catch((error) => {
+      console.warn("PostHog server event flush failed.", error);
+    }),
+  );
 }
