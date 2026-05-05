@@ -145,15 +145,15 @@ const LEGACY_MODEL_IDS: Record<string, string> = {
 };
 
 const BANNER_PROMPTS = [
-  "Turn this into a polished X banner with a sharp center-right focal point, clean negative space near the avatar area, and nothing important in the lower-left AVATAR quiet zone or lower-right MOBILE ACTION quiet zone where X mobile overlays follow/message buttons.",
-  "Make this image feel like a premium tech founder profile banner. Keep the subject recognizable, add cinematic light, and keep the lower-left AVATAR zone plus lower-right MOBILE ACTION zone empty of important details.",
-  "Create a bold editorial X header from this image with crisp contrast, a clean right-side title area, and no faces, logos, or readable text in the AVATAR or MOBILE ACTION quiet zones.",
+  "Turn this into standalone X banner artwork with a sharp center-right focal point, clean negative space near the avatar area, nothing important in the lower-left AVATAR quiet zone or lower-right MOBILE ACTION quiet zone, and no X/Twitter UI buttons, handles, icons, or overlay chrome baked into the image.",
+  "Make this image feel like a premium tech founder profile banner. Keep the subject recognizable, add cinematic light, keep the lower-left AVATAR zone plus lower-right MOBILE ACTION zone empty of important details, and do not add any social app UI elements.",
+  "Create a bold editorial X header artwork from this image with crisp contrast, a clean right-side title area, no faces/logos/readable text in the AVATAR or MOBILE ACTION quiet zones, and no screenshot-like X/Twitter interface elements.",
 ];
 
 const PROFILE_PROMPTS = [
-  "Turn this into a polished X profile picture with a centered face, clean circular crop, strong contrast, and a crisp small-size read.",
-  "Create a premium founder-style avatar from this image. Keep the person recognizable, improve lighting, simplify the background, and make it work as a circle.",
-  "Make this profile picture feel bold and editorial while preserving likeness. Keep the subject centered and avoid tiny text or important details near the corners.",
+  "Turn this into standalone X profile picture artwork with a centered face, clean circular crop, strong contrast, a crisp small-size read, and no X/Twitter UI chrome or badges baked into the image.",
+  "Create a premium founder-style avatar from this image. Keep the person recognizable, improve lighting, simplify the background, make it work as a circle, and do not add social app UI elements.",
+  "Make this profile picture feel bold and editorial while preserving likeness. Keep the subject centered, avoid tiny text or important details near the corners, and do not add verification badges, rings, handles, or overlay buttons.",
 ];
 
 type RealTweet = {
