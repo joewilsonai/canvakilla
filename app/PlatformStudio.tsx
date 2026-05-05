@@ -2186,7 +2186,8 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
           </nav>
 
           <div className="brand-bar">
-            <div>
+            <div className="brand-title">
+              <img src="/logo.svg" alt="" aria-hidden="true" />
               <p className="eyebrow">{config.brandEyebrow}</p>
               <h1>{config.appName}</h1>
             </div>
