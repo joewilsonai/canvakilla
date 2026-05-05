@@ -4,6 +4,24 @@ import posthog from "posthog-js";
 import type { CaptureResult } from "posthog-js";
 
 const ALLOWED_EVENT_PROPERTIES = {
+  $pageview: [
+    "$current_url",
+    "$host",
+    "$pathname",
+    "$referrer",
+    "$referring_domain",
+    "$screen_height",
+    "$screen_width",
+    "$viewport_height",
+    "$viewport_width",
+  ],
+  $pageleave: [
+    "$current_url",
+    "$host",
+    "$pathname",
+    "$referrer",
+    "$referring_domain",
+  ],
   edit_target_switched: ["target"],
   image_downloaded: ["target", "with_template", "source"],
   image_generated: ["model", "target", "has_current_image", "reference_count"],
