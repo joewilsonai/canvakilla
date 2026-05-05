@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#02070a"/>
+      <stop offset=".5" stop-color="#050505"/>
+      <stop offset="1" stop-color="#0b1014"/>
+    </linearGradient>
+    <linearGradient id="banner" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#101820"/>
+      <stop offset=".46" stop-color="#19140f"/>
+      <stop offset="1" stop-color="#270905"/>
+    </linearGradient>
+    <radialGradient id="blueGlow" cx=".78" cy=".3" r=".34">
+      <stop offset="0" stop-color="#1d9bf0" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#1d9bf0" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="42" height="42" patternUnits="userSpaceOnUse">
+      <path d="M42 0H0V42" fill="none" stroke="#ff5c2a" stroke-opacity=".2" stroke-width="1"/>
+    </pattern>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="34" stdDeviation="24" flood-color="#000" flood-opacity=".65"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#blueGlow)"/>
+  <g filter="url(#shadow)">
+    <rect x="54" y="54" width="1092" height="522" rx="28" fill="#000" stroke="#eff3f4" stroke-opacity=".22"/>
+    <rect x="54" y="54" width="300" height="522" rx="28" fill="#000"/>
+    <path d="M354 54v522" stroke="#eff3f4" stroke-opacity=".16"/>
+    <text x="88" y="98" fill="#8b98a5" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="800">CANVA SUCKS, INTRODUCING:</text>
+    <text x="88" y="148" fill="#f7f9f9" font-family="Arial, Helvetica, sans-serif" font-size="44" font-weight="900">CanvaKilla.com</text>
+    <g fill="#f7f9f9" font-family="Arial, Helvetica, sans-serif" font-size="23" font-weight="800">
+      <circle cx="102" cy="222" r="13" fill="#1d9bf0"/><text x="130" y="230">Upload references</text>
+      <circle cx="102" cy="286" r="13" fill="#1d9bf0"/><text x="130" y="294">Pick model</text>
+      <circle cx="102" cy="350" r="13" fill="#1d9bf0"/><text x="130" y="358">Iterate banner</text>
+      <circle cx="102" cy="414" r="13" fill="#1d9bf0"/><text x="130" y="422">Export proof</text>
+    </g>
+    <rect x="354" y="54" width="792" height="84" fill="#000"/>
+    <path d="M354 138h792" stroke="#eff3f4" stroke-opacity=".18"/>
+    <text x="386" y="106" fill="#f7f9f9" font-family="Arial, Helvetica, sans-serif" font-size="28">←</text>
+    <text x="442" y="100" fill="#f7f9f9" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="900">Banner Preview</text>
+    <text x="442" y="126" fill="#71767b" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">X crop guards baked into the prompt</text>
+    <rect x="354" y="138" width="792" height="206" fill="url(#banner)"/>
+    <rect x="354" y="138" width="792" height="206" fill="url(#grid)"/>
+    <path d="M354 344h792" stroke="#eff3f4" stroke-opacity=".18"/>
+    <circle cx="468" cy="344" r="84" fill="#111" stroke="#000" stroke-width="12"/>
+    <circle cx="468" cy="344" r="90" fill="none" stroke="#1d9bf0" stroke-width="5"/>
+    <circle cx="444" cy="322" r="22" fill="#2f3336"/>
+    <circle cx="494" cy="322" r="22" fill="#2f3336"/>
+    <path d="M426 376c30 30 80 30 110 0" fill="none" stroke="#3a3f43" stroke-width="16" stroke-linecap="round"/>
+    <rect x="398" y="300" width="144" height="36" rx="18" fill="#1d9bf0" opacity=".92"/>
+    <text x="470" y="324" text-anchor="middle" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="900">AVATAR ZONE</text>
+    <rect x="944" y="281" width="137" height="52" rx="26" fill="#eff3f4"/>
+    <text x="1012" y="315" text-anchor="middle" fill="#0f1419" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="900">Follow</text>
+    <rect x="889" y="226" width="169" height="36" rx="18" fill="#ffd400" opacity=".9"/>
+    <text x="974" y="250" text-anchor="middle" fill="#111" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="900">MOBILE ACTION</text>
+    <rect x="642" y="180" width="139" height="42" rx="21" fill="#000" opacity=".72" stroke="#fff" stroke-opacity=".42"/>
+    <text x="711" y="207" text-anchor="middle" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="900">CROP GUARD</text>
+    <text x="384" y="438" fill="#f7f9f9" font-family="Arial, Helvetica, sans-serif" font-size="44" font-weight="900">Joe Wilson</text>
+    <circle cx="632" cy="420" r="16" fill="#1d9bf0"/>
+    <text x="632" y="431" text-anchor="middle" fill="#000" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="900">✓</text>
+    <text x="384" y="474" fill="#71767b" font-family="Arial, Helvetica, sans-serif" font-size="24">@joewilsonai</text>
+    <text x="384" y="520" fill="#e7e9ea" font-family="Arial, Helvetica, sans-serif" font-size="27">A banner maker that keeps your good ideas out from behind</text>
+    <text x="384" y="556" fill="#e7e9ea" font-family="Arial, Helvetica, sans-serif" font-size="27">avatars, crop edges, and mobile buttons.</text>
+  </g>
+  <text x="1136" y="548" text-anchor="end" fill="#f7f9f9" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="900">Free until OpenRouter dries up</text>
+  <text x="1136" y="582" text-anchor="end" fill="#1d9bf0" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="900">canvakilla.com</text>
+</svg>
