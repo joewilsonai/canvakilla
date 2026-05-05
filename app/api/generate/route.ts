@@ -556,6 +556,13 @@ export async function POST(request: Request) {
     }
   }
 
+  if (activeGenerations.has(clientKey)) {
+    return NextResponse.json(
+      { error: "A generation is already running in this browser session." },
+      { status: 429 },
+    );
+  }
+
   const rateLimit = checkRateLimit(clientKey);
   if (!rateLimit.ok) {
     captureServerEvent({
@@ -576,13 +583,6 @@ export async function POST(request: Request) {
           "Retry-After": String(rateLimit.resetSeconds),
         },
       },
-    );
-  }
-
-  if (activeGenerations.has(clientKey)) {
-    return NextResponse.json(
-      { error: "A generation is already running in this browser session." },
-      { status: 429 },
     );
   }
 
