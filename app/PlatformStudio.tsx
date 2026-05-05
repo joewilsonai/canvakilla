@@ -634,48 +634,6 @@ function LinkedInDesktopPreview(props: PlatformPreviewProps) {
             </div>
           </section>
 
-          <section className="linkedin-card linkedin-suggested-card">
-            <h3>Suggested for you</h3>
-            <p className="linkedin-private">Private to you</p>
-            <div className="linkedin-suggestion-grid">
-              <div>
-                <strong>Is your current title at Obey Founder & Chief Strategist?</strong>
-                <p>
-                  It's important to keep your profile current so people can find
-                  and connect with you.
-                </p>
-                <span>Confirm current position</span>
-              </div>
-              <div>
-                <strong>Add projects that showcase your skills</strong>
-                <p>
-                  Show recruiters how you put your skills to use by adding
-                  projects to your profile.
-                </p>
-                <span>Add a project</span>
-              </div>
-            </div>
-          </section>
-
-          <section className="linkedin-card linkedin-analytics-card">
-            <h3>Analytics</h3>
-            <p className="linkedin-private">Private to you</p>
-            <div className="linkedin-analytics-grid">
-              <p>
-                <strong>200 profile views</strong>
-                Discover who's viewed your profile.
-              </p>
-              <p>
-                <strong>637 post impressions</strong>
-                Check out who's engaging with your posts.
-              </p>
-              <p>
-                <strong>164 search appearances</strong>
-                See how often you appear in search results.
-              </p>
-            </div>
-          </section>
-
           <section className="linkedin-card linkedin-post-card">
             <div className="linkedin-post-byline">
               <LinkedInAvatar
@@ -698,6 +656,29 @@ function LinkedInDesktopPreview(props: PlatformPreviewProps) {
               <span>{props.references.length || 1} reference checked</span>
             </div>
           </section>
+
+          <section className="linkedin-card linkedin-suggested-card">
+            <h3>Suggested for you</h3>
+            <p className="linkedin-private">Private to you</p>
+            <div className="linkedin-suggestion-grid">
+              <div>
+                <strong>Is your current title at Obey Founder & Chief Strategist?</strong>
+                <p>
+                  It's important to keep your profile current so people can find
+                  and connect with you.
+                </p>
+                <span>Confirm current position</span>
+              </div>
+              <div>
+                <strong>Add projects that showcase your skills</strong>
+                <p>
+                  Show recruiters how you put your skills to use by adding
+                  projects to your profile.
+                </p>
+                <span>Add a project</span>
+              </div>
+            </div>
+          </section>
         </div>
 
         <aside className="linkedin-right-rail" aria-label="LinkedIn right rail preview">
@@ -709,15 +690,23 @@ function LinkedInDesktopPreview(props: PlatformPreviewProps) {
             <p>www.linkedin.com/in/joewilsonjr</p>
           </section>
           <section className="linkedin-card linkedin-ad-card">
-            <div className="linkedin-ad-logo">SONY</div>
-            <strong>Sony Healthcare Solutions</strong>
-            <p>Are you a Healthcare professional?</p>
+            <div className="linkedin-ad-logo">
+              <img src="/abc-logo-final-joe.jpeg" alt="" />
+            </div>
+            <strong>AI Builders Club</strong>
+            <p>Do you want to learn AI by doing?</p>
             <span>Follow</span>
           </section>
           <section className="linkedin-card linkedin-viewers-card">
             <small>Premium</small>
             <h3>Who your viewers also viewed</h3>
-            {["Charnsin Tulyasathien", "Kate Ponder", "Batuhan Okur", "Megan Walsh"].map(
+            {[
+              "Sam Altman",
+              "Dario Amodei",
+              "Boris Cherny",
+              "Andrej Karpathy",
+              "Chungin (Roy) Lee",
+            ].map(
               (name) => (
                 <p key={name}>
                   <strong>{name}</strong>
