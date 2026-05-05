@@ -224,6 +224,21 @@ function getModelCost(model: ModelId, imageCount: number) {
   return MODEL_COST_WEIGHTS[model] + referenceCost;
 }
 
+function buildBannerTypographyInstructions(platform: PlatformId) {
+  const placementLine =
+    platform === "linkedin"
+      ? "For lower-right credits or tiny metadata on LinkedIn, place them inside the central mobile-safe region, above the bottom 30px crop guard, and away from the far-right side-crop strip."
+      : "For lower-right credits or tiny metadata on X, place them above the mobile action button quiet zone and away from the absolute lower-right corner.";
+
+  return [
+    "If the user requests readable text, typography, quoted copy, taglines, or exact words, treat that copy as a primary subject of the artwork.",
+    "Preserve user-provided text as exactly as possible: same words, casing, punctuation, symbols, and requested accent colors. Do not paraphrase, add extra words, swap symbols, or change punctuation.",
+    "Respect requested typographic hierarchy, line grouping, alignment, and position unless it collides with a platform crop guard or quiet zone.",
+    "Fit text by reducing type size, tracking, or line length rather than clipping it, making it unreadable, or pushing it into crop guards, side crops, avatar/profile overlays, or action-button quiet zones.",
+    placementLine,
+  ];
+}
+
 function getSafeImageMimeType(contentType: string): ImageMimeType | "" {
   const mimeType = contentType.split(";")[0]?.trim().toLowerCase() || "";
   return ACCEPTED_IMAGE_TYPES.has(mimeType as ImageMimeType)
@@ -266,6 +281,7 @@ function buildBannerInstructions({
       sourceLine,
       referenceLine,
       "The final export will be cropped to 1584x396 pixels, a 4:1 landscape LinkedIn cover.",
+      ...buildBannerTypographyInstructions(platform),
       "Keep the complete intended design readable in the center mobile-safe zone, roughly the central 1200x360 pixels.",
       "LinkedIn mobile clips the left and right edges aggressively, so keep faces, logos, readable text, brand marks, and key subject details away from the far left and far right edges.",
       "A large profile photo circle overlaps the lower-left banner edge. In the 1584x396 canvas, treat roughly x=48 to x=348 and y=210 to the bottom edge as visually quiet because the rest of that circle extends below the banner.",
@@ -287,6 +303,7 @@ function buildBannerInstructions({
     sourceLine,
     referenceLine,
     "The final export will be cropped to 1500x500 pixels, a 3:1 landscape header.",
+    ...buildBannerTypographyInstructions(platform),
     "Compose the banner so the central 3:1 crop still contains the complete intended design.",
     "The lower-left quiet zone is reserved for the profile picture overlap and must not contain anything important.",
     "The lower-right mobile action zone is reserved for X mobile Follow, Edit profile, Message, and action buttons and must not contain anything important.",
@@ -363,6 +380,7 @@ function buildUserEditPrompt(userPrompt: string) {
     userPrompt.trim(),
     "</user_edit_request>",
     "Use the request as creative direction only where it does not conflict with the higher-priority product constraints.",
+    "When the request includes exact text, layout, colors, typography, or positioning, follow those details precisely unless they collide with a required platform safe zone.",
   ].join("\n");
 }
 
