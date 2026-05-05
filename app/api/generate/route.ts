@@ -383,12 +383,19 @@ function getRequestIp(request: Request) {
   return "unknown-ip";
 }
 
+function sanitizeApiKey(value?: string) {
+  return (value || "")
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\\n/g, "")
+    .trim();
+}
+
 function getOpenRouterApiKey() {
-  const apiKey =
+  const apiKey = sanitizeApiKey(
     process.env.OPENROUTER_API_KEY ||
-    process.env.OPENROUTER_KEY ||
-    process.env.OPENROUTER_TOKEN ||
-    "";
+      process.env.OPENROUTER_KEY ||
+      process.env.OPENROUTER_TOKEN,
+  );
 
   if (!apiKey && process.env.NODE_ENV === "production" && !warnedMissingOpenRouterKey) {
     warnedMissingOpenRouterKey = true;
