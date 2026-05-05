@@ -48,7 +48,7 @@ const MODEL_CONFIGS = {
   },
   "google/gemini-3.1-flash-image-preview": {
     label: "Nano Banana 2",
-    bannerAspectRatio: "3:1",
+    bannerAspectRatio: "21:9",
     profileAspectRatio: "1:1",
     imageSize: "2K",
   },
@@ -59,7 +59,7 @@ const MODEL_CONFIGS = {
   },
   "google/gemini-3-pro-image-preview": {
     label: "Nano Banana Pro",
-    bannerAspectRatio: "3:1",
+    bannerAspectRatio: "21:9",
     profileAspectRatio: "1:1",
     imageSize: "2K",
   },
@@ -1008,7 +1008,7 @@ async function fetchOpenRouterJson(
           headers: {
             Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
-            "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
+            "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "https://canvakilla.com",
             "X-Title": "CanvaKilla.com",
           },
           body,
@@ -1160,13 +1160,9 @@ async function generateWithOpenRouter({
     return NextResponse.json({
       ...result,
       model,
-      note: getTextNote(payload.choices?.[0]?.message),
       provider: "openrouter",
-      usage: payload.usage || null,
     });
   } catch (error) {
-    console.error(error);
-
     const status =
       error instanceof ProviderError && error.status >= 400 && error.status < 600
         ? error.status
@@ -1177,6 +1173,8 @@ async function generateWithOpenRouter({
         : "Image generation failed. Try a smaller image or a different prompt.";
     const code =
       error instanceof ProviderError ? error.code : "image_generation_failed";
+
+    console.error("Image generation failed", { code, status, message });
 
     return NextResponse.json(
       {

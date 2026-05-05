@@ -13,8 +13,7 @@ export const metadata: Metadata = {
   description,
   openGraph: {
     title,
-    description:
-      "Crop math kills more banners than bad design. Free until the OpenRouter credits run out.",
+    description: "Crop math kills more banners than bad design. Free public preview.",
     url: siteUrl,
     siteName: "CanvaKilla.com",
     type: "website",
@@ -30,8 +29,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title,
-    description:
-      "Crop math kills more banners than bad design. Free until the OpenRouter credits run out.",
+    description: "Crop math kills more banners than bad design. Free public preview.",
     images: ["/og-launch.png"],
   },
   icons: {

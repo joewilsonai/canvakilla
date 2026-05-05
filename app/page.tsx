@@ -63,7 +63,6 @@ type GenerateResponse = {
   imageBase64?: string;
   mimeType?: string;
   model?: string;
-  note?: string;
   error?: string;
 };
 

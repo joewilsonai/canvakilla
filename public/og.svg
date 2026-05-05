@@ -61,8 +61,8 @@
     <text x="632" y="431" text-anchor="middle" fill="#000" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="900">✓</text>
     <text x="384" y="474" fill="#aab8c2" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="800">@joewilsonai</text>
     <text x="384" y="520" fill="#e7e9ea" font-family="Arial, Helvetica, sans-serif" font-size="27">Keeps banners clear of avatars, crop edges, and mobile buttons.</text>
-    <rect x="384" y="532" width="354" height="36" rx="18" fill="#1d9bf0" fill-opacity=".16" stroke="#1d9bf0" stroke-opacity=".42"/>
-    <text x="561" y="556" text-anchor="middle" fill="#f7f9f9" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="900">Free until OpenRouter dries up</text>
+    <rect x="384" y="532" width="236" height="36" rx="18" fill="#1d9bf0" fill-opacity=".16" stroke="#1d9bf0" stroke-opacity=".42"/>
+    <text x="502" y="556" text-anchor="middle" fill="#f7f9f9" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="900">Free public preview</text>
   </g>
   <text x="1136" y="582" text-anchor="end" fill="#1d9bf0" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="900">canvakilla.com</text>
 </svg>
