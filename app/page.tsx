@@ -38,6 +38,14 @@ import {
 } from "lucide-react";
 import { DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { captureClientEvent } from "../lib/posthog-client";
+import {
+  getDataUrlBytes,
+  getNextReferenceNumber,
+  LEGACY_MODEL_IDS,
+  MODELS,
+  normalizeModelId,
+  type ReferenceItem,
+} from "../lib/client-utils";
 
 type HistoryItem = {
   id: string;
@@ -49,14 +57,6 @@ type HistoryItem = {
 
 type EditTarget = "banner" | "profile";
 type PreviewMode = "desktop" | "mobile";
-
-type ReferenceItem = {
-  id: string;
-  image: string;
-  name: string;
-  label: string;
-  createdAt: string;
-};
 
 type GenerateResponse = {
   imageBase64?: string;
@@ -118,32 +118,6 @@ const ACCEPTED_CLIENT_IMAGE_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
-
-const MODELS = [
-  {
-    id: "openai/gpt-5.4-image-2",
-    label: "GPT Image 2",
-  },
-  {
-    id: "google/gemini-3.1-flash-image-preview",
-    label: "Nano Banana 2",
-  },
-  {
-    id: "google/gemini-2.5-flash-image",
-    label: "Nano Banana",
-  },
-  {
-    id: "google/gemini-3-pro-image-preview",
-    label: "Nano Banana Pro",
-  },
-];
-
-const LEGACY_MODEL_IDS: Record<string, string> = {
-  "gpt-image-2": "openai/gpt-5.4-image-2",
-  "gemini-3.1-flash-image-preview": "google/gemini-3.1-flash-image-preview",
-  "gemini-2.5-flash-image": "google/gemini-2.5-flash-image",
-  "gemini-3-pro-image-preview": "google/gemini-3-pro-image-preview",
-};
 
 const BANNER_PROMPTS = [
   "Turn this into a polished X banner with a sharp center-right focal point, clean negative space near the avatar area, and nothing important in the lower-left AVATAR quiet zone or lower-right MOBILE ACTION quiet zone where X mobile overlays follow/message buttons.",
@@ -364,11 +338,6 @@ function openWorkspaceDb() {
   });
 }
 
-function normalizeModelId(modelId: string) {
-  const nextModel = LEGACY_MODEL_IDS[modelId] || modelId;
-  return MODELS.some((item) => item.id === nextModel) ? nextModel : MODELS[0].id;
-}
-
 async function readWorkspaceState() {
   if (typeof indexedDB === "undefined") return null;
 
@@ -425,18 +394,6 @@ function readFileAsDataUrl(file: File) {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
-}
-
-function getNextReferenceNumber(references: ReferenceItem[]) {
-  return references.reduce((max, reference) => {
-    const number = Number(reference.label.replace(/^R/, ""));
-    return Number.isFinite(number) ? Math.max(max, number) : max;
-  }, 0);
-}
-
-function getDataUrlBytes(dataUrl: string) {
-  const base64 = dataUrl.split(",")[1] || "";
-  return Math.ceil((base64.length * 3) / 4);
 }
 
 async function dataUrlToFile(dataUrl: string, name: string) {

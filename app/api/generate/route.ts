@@ -128,17 +128,17 @@ const activeGenerations =
 
 let lastRateCleanupAt = 0;
 
-function normalizeModelId(model: string): ModelId {
+export function normalizeModelId(model: string): ModelId {
   if (model in MODEL_CONFIGS) return model as ModelId;
   return LEGACY_MODEL_IDS[model] || DEFAULT_MODEL;
 }
 
-function getAspectRatio(model: ModelId, target: Target) {
+export function getAspectRatio(model: ModelId, target: Target) {
   const config = MODEL_CONFIGS[model];
   return target === "profile" ? config.profileAspectRatio : config.bannerAspectRatio;
 }
 
-function getImageConfig(model: ModelId, target: Target) {
+export function getImageConfig(model: ModelId, target: Target) {
   const config = MODEL_CONFIGS[model];
   const imageConfig: {
     aspect_ratio?: string;
@@ -155,12 +155,12 @@ function getImageConfig(model: ModelId, target: Target) {
   return Object.keys(imageConfig).length ? imageConfig : undefined;
 }
 
-function getSafeImageMimeType(contentType: string) {
+export function getSafeImageMimeType(contentType: string) {
   const mimeType = contentType.split(";")[0]?.trim().toLowerCase() || "";
   return ACCEPTED_IMAGE_TYPES.has(mimeType) ? mimeType : "";
 }
 
-function buildBannerPrompt(
+export function buildBannerPrompt(
   userPrompt: string,
   {
     hasCurrentImage,
@@ -203,7 +203,7 @@ function buildBannerPrompt(
     .join("\n");
 }
 
-function buildProfilePrompt(
+export function buildProfilePrompt(
   userPrompt: string,
   {
     hasCurrentImage,
@@ -241,7 +241,7 @@ function buildProfilePrompt(
     .join("\n");
 }
 
-function buildPrompt(
+export function buildPrompt(
   target: Target,
   userPrompt: string,
   options: {
@@ -254,7 +254,7 @@ function buildPrompt(
     : buildBannerPrompt(userPrompt, options);
 }
 
-function getRequestIp(request: Request) {
+export function getRequestIp(request: Request) {
   const forwardedFor = request.headers.get("x-forwarded-for");
   if (forwardedFor) return forwardedFor.split(",")[0]?.trim() || "unknown-ip";
 
@@ -265,7 +265,7 @@ function getRequestIp(request: Request) {
   );
 }
 
-function getSigningSecret() {
+export function getSigningSecret() {
   return (
     process.env.CANVAKILLA_SESSION_SECRET ||
     process.env.OPENROUTER_API_KEY ||
@@ -273,13 +273,13 @@ function getSigningSecret() {
   );
 }
 
-function signSessionId(sessionId: string) {
+export function signSessionId(sessionId: string) {
   return createHmac("sha256", getSigningSecret())
     .update(sessionId)
     .digest("base64url");
 }
 
-function parseCookies(cookieHeader: string | null) {
+export function parseCookies(cookieHeader: string | null) {
   const cookies = new Map<string, string>();
   if (!cookieHeader) return cookies;
 
@@ -292,7 +292,7 @@ function parseCookies(cookieHeader: string | null) {
   return cookies;
 }
 
-function verifySessionCookie(value?: string) {
+export function verifySessionCookie(value?: string) {
   if (!value) return "";
   const [sessionId, signature] = value.split(".");
   if (!sessionId || !signature || !/^[a-zA-Z0-9_-]{16,96}$/.test(sessionId)) {
@@ -330,7 +330,7 @@ function withSessionCookie<T extends NextResponse>(
   return response;
 }
 
-function getLimit(name: string, fallback: number) {
+export function getLimit(name: string, fallback: number) {
   const parsed = Number.parseInt(process.env[name] || "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
@@ -443,7 +443,7 @@ async function readCappedResponseBody(response: Response) {
   return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
 }
 
-function isPrivateIp(ip: string) {
+export function isPrivateIp(ip: string) {
   if (ip === "127.0.0.1" || ip === "::1" || ip === "0.0.0.0") return true;
   if (ip.startsWith("10.") || ip.startsWith("192.168.")) return true;
   if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(ip)) return true;
@@ -471,7 +471,7 @@ async function assertSafeProviderUrl(imageUrl: string) {
   }
 }
 
-function getTextNote(message?: OpenRouterMessage) {
+export function getTextNote(message?: OpenRouterMessage) {
   if (!message) return "";
 
   if (typeof message.content === "string") return message.content;
@@ -494,7 +494,7 @@ function getTextNote(message?: OpenRouterMessage) {
     .join("\n");
 }
 
-function findImageUrl(payload: OpenRouterPayload) {
+export function findImageUrl(payload: OpenRouterPayload) {
   const message = payload.choices?.[0]?.message;
   const candidates: unknown[] = [];
 
