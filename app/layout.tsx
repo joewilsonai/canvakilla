@@ -3,9 +3,10 @@ import "./globals.css";
 import { PostHogProvider } from "./providers";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://canvakilla.com";
-const title = "CanvaKilla - banner maker that knows where X actually crops";
+const title =
+  "CanvaKilla - banner maker that knows where every platform actually crops";
 const description =
-  "Crop guards, avatar zones, mobile button overlays, and AI image iteration for X banners and profile pictures.";
+  "Crop guards, avatar zones, mobile overlays, and AI image iteration for X and LinkedIn banners and profile pictures.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -22,7 +23,7 @@ export const metadata: Metadata = {
         url: "/og-launch.png",
         width: 1200,
         height: 630,
-        alt: "CanvaKilla X banner maker with avatar and mobile crop guards.",
+        alt: "CanvaKilla banner maker with platform crop guards.",
       },
     ],
   },
