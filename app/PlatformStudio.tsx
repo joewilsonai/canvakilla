@@ -1042,7 +1042,7 @@ function drawBannerProof(context: CanvasRenderingContext2D, platform: PlatformId
     context.strokeRect(192, 18, 1200, 360);
 
     context.beginPath();
-    context.arc(144, 284, 84, 0, Math.PI * 2);
+    context.arc(198, 360, 150, 0, Math.PI * 2);
     context.fillStyle = "rgba(255, 77, 109, 0.3)";
     context.fill();
     context.strokeStyle = "rgba(255, 77, 109, 0.96)";
@@ -1055,7 +1055,7 @@ function drawBannerProof(context: CanvasRenderingContext2D, platform: PlatformId
     context.fillText("CROP GUARD", 34, 27);
     context.fillText("CROP GUARD", 34, 385);
     context.fillText("MOBILE SAFE ZONE", 612, 58);
-    context.fillText("PROFILE PHOTO", 36, 206);
+    context.fillText("PROFILE PHOTO", 54, 198);
     context.font = "700 21px Arial";
     context.fillText("SIDE CROP", 28, 188);
     context.fillText("SIDE CROP", 1430, 188);

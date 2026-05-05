@@ -1321,7 +1321,7 @@ button:focus-visible,
   position: relative;
   width: 100%;
   aspect-ratio: 4 / 1;
-  overflow: hidden;
+  overflow: visible;
   background:
     linear-gradient(90deg, rgba(239, 243, 244, 0.08) 1px, transparent 1px),
     linear-gradient(180deg, rgba(239, 243, 244, 0.08) 1px, transparent 1px),
@@ -1358,6 +1358,7 @@ button:focus-visible,
 
 .linkedin-profile-card > .linkedin-avatar {
   top: 96px;
+  z-index: 5;
 }
 
 .linkedin-avatar.is-mobile {
@@ -1514,6 +1515,13 @@ button:focus-visible,
   height: 8.6%;
 }
 
+.linkedin-template {
+  --linkedin-avatar-left: 24px;
+  --linkedin-avatar-top: 105px;
+  --linkedin-avatar-size: 150px;
+  z-index: 7;
+}
+
 .linkedin-side-crop,
 .linkedin-safe-zone,
 .linkedin-profile-zone,
@@ -1557,9 +1565,10 @@ button:focus-visible,
 }
 
 .linkedin-profile-zone {
-  left: 3.79%;
-  top: 50.5%;
-  width: 10.61%;
+  left: var(--linkedin-avatar-left);
+  top: var(--linkedin-avatar-top);
+  width: var(--linkedin-avatar-size);
+  z-index: 6;
   aspect-ratio: 1;
   border: 2px dashed rgba(255, 77, 109, 0.95);
   border-radius: 50%;
@@ -1570,9 +1579,9 @@ button:focus-visible,
 }
 
 .linkedin-profile-label {
-  left: 3.2%;
-  top: 39%;
-  z-index: 4;
+  left: calc(var(--linkedin-avatar-left) + 10px);
+  top: calc(var(--linkedin-avatar-top) - 27px);
+  z-index: 8;
   color: white;
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.58);
 }
@@ -1659,13 +1668,13 @@ button:focus-visible,
   font-weight: 750;
 }
 
-.linkedin-template.is-mobile .linkedin-profile-zone {
-  width: 14%;
+.linkedin-template.is-mobile {
+  --linkedin-avatar-left: 18px;
+  --linkedin-avatar-top: 56px;
+  --linkedin-avatar-size: 98px;
 }
 
 .linkedin-template.is-mobile .linkedin-profile-label {
-  left: 3%;
-  top: 36%;
   font-size: 9px;
 }
 

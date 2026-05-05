@@ -267,7 +267,7 @@ function buildBannerInstructions({
       "The final export will be cropped to 1584x396 pixels, a 4:1 landscape LinkedIn cover.",
       "Keep the complete intended design readable in the center mobile-safe zone, roughly the central 1200x360 pixels.",
       "LinkedIn mobile clips the left and right edges aggressively, so keep faces, logos, readable text, brand marks, and key subject details away from the far left and far right edges.",
-      "A 168x168 profile photo circle overlaps the lower-left area around x=60, y=200 in the 1584x396 canvas. Keep that profile-photo overlay area visually quiet.",
+      "A large profile photo circle overlaps the lower-left banner edge. In the 1584x396 canvas, treat roughly x=48 to x=348 and y=210 to the bottom edge as visually quiet because the rest of that circle extends below the banner.",
       "Avoid placing critical details in the top 30 pixels or bottom 30 pixels because LinkedIn can crop narrow header strips.",
       "Do not reserve any lower-right X/Twitter mobile action button zone for LinkedIn; LinkedIn does not overlay that button on the banner.",
       "Make the composition feel credible, professional, and hireable, not memey or like a generic wallpaper.",

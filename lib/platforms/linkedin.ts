@@ -38,7 +38,7 @@ export const linkedinPlatform: PlatformConfig = {
     },
     avatar: {
       label: "Profile photo overlay",
-      body: "LinkedIn places a 168x168 profile photo over the lower-left banner area. Keep this space visually quiet.",
+      body: "LinkedIn places a large profile photo over the lower-left banner area. On a 1584x396 export, keep roughly the lower-left 300x190 visible area quiet.",
     },
     "side-crop": {
       label: "Mobile side crop",
