@@ -146,20 +146,16 @@ const ACCEPTED_CLIENT_IMAGE_TYPES = new Set([
 
 const MODELS = [
   {
-    id: "openai/gpt-5.4-image-2",
-    label: "GPT Image 2",
-  },
-  {
     id: "google/gemini-3.1-flash-image-preview",
     label: "Nano Banana 2",
   },
   {
-    id: "google/gemini-2.5-flash-image",
-    label: "Nano Banana",
-  },
-  {
     id: "google/gemini-3-pro-image-preview",
     label: "Nano Banana Pro",
+  },
+  {
+    id: "google/gemini-2.5-flash-image",
+    label: "Nano Banana",
   },
 ];
 
