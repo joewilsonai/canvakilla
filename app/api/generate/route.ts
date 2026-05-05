@@ -185,6 +185,7 @@ const activeGenerations =
   (globalRateState.canvaKillaActiveGenerations = new Set<string>());
 
 let lastRateCleanupAt = 0;
+let warnedMissingOpenRouterKey = false;
 
 function normalizeModelId(model: string): ModelId {
   if (model in MODEL_CONFIGS) return model as ModelId;
@@ -382,10 +383,27 @@ function getRequestIp(request: Request) {
   return "unknown-ip";
 }
 
+function getOpenRouterApiKey() {
+  const apiKey =
+    process.env.OPENROUTER_API_KEY ||
+    process.env.OPENROUTER_KEY ||
+    process.env.OPENROUTER_TOKEN ||
+    "";
+
+  if (!apiKey && process.env.NODE_ENV === "production" && !warnedMissingOpenRouterKey) {
+    warnedMissingOpenRouterKey = true;
+    console.warn(
+      "OPENROUTER_API_KEY missing in production; image generation is disabled.",
+    );
+  }
+
+  return apiKey;
+}
+
 function getSigningSecret() {
   return (
     process.env.CANVAKILLA_SESSION_SECRET ||
-    process.env.OPENROUTER_API_KEY ||
+    getOpenRouterApiKey() ||
     "canvakilla-local-development-secret"
   );
 }
@@ -1230,7 +1248,7 @@ async function generateWithOpenRouter({
   target: Target;
   distinctId: string;
 }) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = getOpenRouterApiKey();
 
   if (!apiKey) {
     return NextResponse.json(
