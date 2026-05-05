@@ -66,6 +66,8 @@ type GenerateResponse = {
   error?: string;
 };
 
+type UploadImageKind = "banner" | "profile" | "reference";
+
 type PersistedWorkspace = {
   editTarget?: EditTarget;
   previewMode?: PreviewMode;
@@ -112,6 +114,12 @@ const MAX_REFERENCE_IMAGES_PER_RUN = 12;
 const MAX_STORED_REFERENCE_IMAGES = 24;
 const MAX_CLIENT_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_CLIENT_TOTAL_IMAGE_BYTES = 32 * 1024 * 1024;
+const MAX_GENERATION_UPLOAD_BYTES = 3.4 * 1024 * 1024;
+const MIN_GENERATION_IMAGE_BYTES = 220 * 1024;
+const REFERENCE_UPLOAD_MAX_EDGE = 1400;
+const BANNER_UPLOAD_WIDTH = 1500;
+const BANNER_UPLOAD_HEIGHT = 500;
+const PROFILE_UPLOAD_SIZE = 1024;
 const ACCEPTED_CLIENT_IMAGE_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -450,32 +458,119 @@ function getDataUrlBytes(dataUrl: string) {
   return Math.ceil((base64.length * 3) / 4);
 }
 
-async function dataUrlToFile(dataUrl: string, name: string) {
-  const match = dataUrl.match(/^data:([^;,]+)?(;base64)?,([\s\S]*)$/);
+async function dataUrlToFile(
+  dataUrl: string,
+  name: string,
+  kind: UploadImageKind,
+  maxBytes: number,
+) {
+  const image = await loadDataUrlImage(dataUrl);
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
 
-  if (!match) {
-    throw new Error("Could not read the current image for iteration.");
+  if (!context) {
+    throw new Error("Could not prepare that image for generation.");
   }
 
-  const mimeType = match[1] || "image/png";
-  const isBase64 = Boolean(match[2]);
-  const payload = match[3] || "";
-  const bytes = isBase64
-    ? base64ToBytes(payload)
-    : new TextEncoder().encode(decodeURIComponent(payload));
+  if (kind === "banner") {
+    canvas.width = BANNER_UPLOAD_WIDTH;
+    canvas.height = BANNER_UPLOAD_HEIGHT;
+    context.fillStyle = "#111111";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    drawCoverImage(context, image, canvas.width, canvas.height);
+  } else if (kind === "profile") {
+    canvas.width = PROFILE_UPLOAD_SIZE;
+    canvas.height = PROFILE_UPLOAD_SIZE;
+    context.fillStyle = "#111111";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    drawCoverImage(context, image, canvas.width, canvas.height);
+  } else {
+    const scale = Math.min(
+      1,
+      REFERENCE_UPLOAD_MAX_EDGE / image.naturalWidth,
+      REFERENCE_UPLOAD_MAX_EDGE / image.naturalHeight,
+    );
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    context.fillStyle = "#111111";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  }
 
-  return new File([bytes], name, { type: mimeType });
+  return canvasToUploadFile(canvas, name, maxBytes);
 }
 
-function base64ToBytes(base64: string) {
-  const binary = atob(base64.replace(/\s/g, ""));
-  const bytes = new Uint8Array(binary.length);
+function loadDataUrlImage(dataUrl: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not read that image for generation."));
+    image.src = dataUrl;
+  });
+}
 
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
+async function canvasToUploadFile(
+  sourceCanvas: HTMLCanvasElement,
+  name: string,
+  maxBytes: number,
+) {
+  const qualities = [0.86, 0.74, 0.62, 0.5];
+  let canvas = sourceCanvas;
+  let lastBlob: Blob | null = null;
+
+  for (let sizeAttempt = 0; sizeAttempt < 4; sizeAttempt += 1) {
+    for (const quality of qualities) {
+      const blob = await canvasToBlob(canvas, "image/jpeg", quality);
+      lastBlob = blob;
+      if (blob.size <= maxBytes) {
+        return new File([blob], toJpegName(name), { type: "image/jpeg" });
+      }
+    }
+
+    canvas = downscaleCanvas(canvas, 0.78);
   }
 
-  return bytes;
+  if (!lastBlob) {
+    throw new Error("Could not prepare that image for generation.");
+  }
+
+  return new File([lastBlob], toJpegName(name), { type: "image/jpeg" });
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error("Could not prepare that image for generation."));
+        }
+      },
+      type,
+      quality,
+    );
+  });
+}
+
+function downscaleCanvas(sourceCanvas: HTMLCanvasElement, scale: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(sourceCanvas.width * scale));
+  canvas.height = Math.max(1, Math.round(sourceCanvas.height * scale));
+  const context = canvas.getContext("2d");
+
+  if (!context) return sourceCanvas;
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(sourceCanvas, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+function toJpegName(name: string) {
+  const baseName = name.replace(/\.[^.]+$/, "") || "image";
+  return `${baseName}.jpg`;
 }
 
 function drawCoverImage(
@@ -594,6 +689,27 @@ function getGenerationErrorKind(message: string) {
   }
 
   return "generation_failed";
+}
+
+async function readGeneratePayload(response: Response) {
+  const text = await response.text();
+  if (!text.trim()) return {} as GenerateResponse;
+
+  try {
+    return JSON.parse(text) as GenerateResponse;
+  } catch {
+    const normalized = text.toLowerCase();
+    if (response.status === 413 || normalized.includes("request entity")) {
+      return {
+        error:
+          "That run has too much image data. Remove a few references or try again with fewer source images.",
+      };
+    }
+
+    return {
+      error: text.replace(/\s+/g, " ").trim().slice(0, 240) || "Generation failed.",
+    };
+  }
 }
 
 export default function Home() {
@@ -867,26 +983,58 @@ export default function Home() {
       formData.append("prompt", prompt.trim());
       formData.append("model", model);
       formData.append("target", editTarget);
+      const attachedImageCount =
+        (editTarget === "banner" && currentImage ? 1 : 0) +
+        (editTarget === "profile" && profileImage ? 1 : 0) +
+        runReferences.length;
+      const imageByteBudget = Math.max(
+        MIN_GENERATION_IMAGE_BYTES,
+        Math.floor(MAX_GENERATION_UPLOAD_BYTES / Math.max(1, attachedImageCount) - 8_192),
+      );
+      let uploadBytes = 0;
+      const appendUploadImage = async (
+        key: string,
+        dataUrl: string,
+        name: string,
+        kind: UploadImageKind,
+      ) => {
+        const file = await dataUrlToFile(dataUrl, name, kind, imageByteBudget);
+        uploadBytes += file.size;
+
+        if (uploadBytes > MAX_GENERATION_UPLOAD_BYTES) {
+          throw new Error(
+            "That run has too much image data. Remove a few references or try again with fewer source images.",
+          );
+        }
+
+        formData.append(key, file);
+      };
 
       if (editTarget === "banner" && currentImage) {
-        formData.append(
+        await appendUploadImage(
           "currentImage",
-          await dataUrlToFile(currentImage, "x-banner-current.png"),
+          currentImage,
+          "x-banner-current.jpg",
+          "banner",
         );
       }
 
       if (editTarget === "profile" && profileImage) {
-        formData.append(
+        await appendUploadImage(
           "currentImage",
-          await dataUrlToFile(profileImage, "x-profile-current.png"),
+          profileImage,
+          "x-profile-current.jpg",
+          "profile",
         );
       }
 
       await Promise.all(
         runReferences.map(async (reference) => {
-          formData.append(
+          await appendUploadImage(
             "referenceImages",
-            await dataUrlToFile(reference.image, `${reference.label}-${reference.name}`),
+            reference.image,
+            `${reference.label}-${reference.name}`,
+            "reference",
           );
           formData.append("referenceLabels", reference.label);
         }),
@@ -896,7 +1044,7 @@ export default function Home() {
         method: "POST",
         body: formData,
       });
-      const payload = (await response.json()) as GenerateResponse;
+      const payload = await readGeneratePayload(response);
 
       if (!response.ok || !payload.imageBase64) {
         throw new Error(payload.error || "No image returned.");

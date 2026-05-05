@@ -9,9 +9,9 @@ export const runtime = "nodejs";
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "google/gemini-3.1-flash-image-preview";
 const MAX_REFERENCE_IMAGES_PER_RUN = 12;
-const MAX_SOURCE_IMAGE_BYTES = 8 * 1024 * 1024;
-const MAX_TOTAL_SOURCE_IMAGE_BYTES = 32 * 1024 * 1024;
-const MAX_REQUEST_BYTES = 38 * 1024 * 1024;
+const MAX_SOURCE_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_TOTAL_SOURCE_IMAGE_BYTES = 3.6 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 4 * 1024 * 1024;
 const MAX_PROVIDER_IMAGE_BYTES = 18 * 1024 * 1024;
 const MAX_PROMPT_CHARS = 3_000;
 const PROVIDER_FETCH_TIMEOUT_MS = 20_000;
@@ -668,12 +668,12 @@ function assertImageDimensions(
 
 async function validateSourceImage(image: ImageInput): Promise<ImageInput> {
   if (image.file.size > MAX_SOURCE_IMAGE_BYTES) {
-    throw new Error("Keep each source image under 8MB.");
+    throw new Error("Keep each generation source image under 2MB.");
   }
 
   const buffer = Buffer.from(await image.file.arrayBuffer());
   if (buffer.length > MAX_SOURCE_IMAGE_BYTES) {
-    throw new Error("Keep each source image under 8MB.");
+    throw new Error("Keep each generation source image under 2MB.");
   }
 
   const mimeType = sniffImageMimeType(buffer);
@@ -1215,7 +1215,7 @@ export async function POST(request: Request) {
   if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
     return withSessionCookie(
       NextResponse.json(
-        { error: "Keep total uploads under 32MB for each generation." },
+        { error: "Keep generation uploads under 4MB total. Remove a few references and try again." },
         { status: 413 },
       ),
       session,
@@ -1295,7 +1295,7 @@ export async function POST(request: Request) {
   if (totalImageBytes > MAX_TOTAL_SOURCE_IMAGE_BYTES) {
     return withSessionCookie(
       NextResponse.json(
-        { error: "Keep all source images under 32MB total for each generation." },
+        { error: "Keep generation source images under 4MB total. Remove a few references and try again." },
         { status: 400 },
       ),
       session,
