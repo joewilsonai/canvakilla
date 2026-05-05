@@ -138,9 +138,9 @@ const LEGACY_MODEL_IDS: Record<string, string> = {
 };
 
 const BANNER_PROMPTS = [
-  "Turn this into a polished X banner with a sharp center-right focal point, clean negative space near the avatar area, and nothing important in the lower-left or lower-right quiet zones.",
-  "Make this image feel like a premium tech founder profile banner. Keep the subject recognizable, add cinematic light, and keep both lower quiet zones empty of important details.",
-  "Create a bold editorial X header from this image with crisp contrast, a clean right-side title area, and no faces, logos, or readable text in either lower quiet zone.",
+  "Turn this into a polished X banner with a sharp center-right focal point, clean negative space near the avatar area, and nothing important in the lower-left AVATAR quiet zone or lower-right MOBILE ACTION quiet zone where X mobile overlays follow/message buttons.",
+  "Make this image feel like a premium tech founder profile banner. Keep the subject recognizable, add cinematic light, and keep the lower-left AVATAR zone plus lower-right MOBILE ACTION zone empty of important details.",
+  "Create a bold editorial X header from this image with crisp contrast, a clean right-side title area, and no faces, logos, or readable text in the AVATAR or MOBILE ACTION quiet zones.",
 ];
 
 const PROFILE_PROMPTS = [
@@ -154,9 +154,10 @@ type RealTweet = {
   handle: string;
   text: string;
   likes: string;
-  url: string;
+  url?: string;
   avatarUrl: string;
   mediaUrl?: string;
+  sourceLabel?: string;
 };
 
 const REAL_TWEETS: RealTweet[] = [
@@ -214,6 +215,38 @@ const REAL_TWEETS: RealTweet[] = [
     avatarUrl:
       "https://pbs.twimg.com/profile_images/1514334973351927820/ezP0hT_Z_400x400.jpg",
   },
+  {
+    name: "Rate Limit Support Group",
+    handle: "ratelimitclub",
+    text: "claude code hit a limit and the whole room suddenly learned what pacing means",
+    likes: "124K",
+    avatarUrl: "/icon.svg",
+    sourceLabel: "demo",
+  },
+  {
+    name: "my CLAUDE.md",
+    handle: "claudemd",
+    text: "i put one instruction in CLAUDE.md and now every repo is spiritually a settings panel",
+    likes: "38K",
+    avatarUrl: "/icon.svg",
+    sourceLabel: "demo",
+  },
+  {
+    name: "agent recursion dept.",
+    handle: "agentrecursing",
+    text: "the agent asked the agent to ask the agent if the agent was still working",
+    likes: "52K",
+    avatarUrl: "/icon.svg",
+    sourceLabel: "demo",
+  },
+  {
+    name: "copilot survivor",
+    handle: "copilothaha",
+    text: "copilot suggested deleting the code and honestly i respect a bold pivot",
+    likes: "89K",
+    avatarUrl: "/icon.svg",
+    sourceLabel: "demo",
+  },
 ];
 
 function RealTweetCard({
@@ -228,25 +261,34 @@ function RealTweetCard({
   const className =
     variant === "mobile" ? "x-mobile-post x-real-tweet" : "x-post x-real-tweet";
   const avatarSize = variant === "mobile" ? 42 : 44;
+  const avatar = (
+    <img
+      src={tweet.avatarUrl}
+      alt=""
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      width={avatarSize}
+      height={avatarSize}
+    />
+  );
 
   return (
     <article className={className}>
-      <a
-        className="x-post-avatar"
-        href={`https://x.com/${tweet.handle}`}
-        target="_blank"
-        rel="noreferrer"
-        aria-label={`${tweet.name} on X`}
-      >
-        <img
-          src={tweet.avatarUrl}
-          alt=""
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          width={avatarSize}
-          height={avatarSize}
-        />
-      </a>
+      {tweet.url ? (
+        <a
+          className="x-post-avatar"
+          href={`https://x.com/${tweet.handle}`}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`${tweet.name} on X`}
+        >
+          {avatar}
+        </a>
+      ) : (
+        <span className="x-post-avatar" aria-hidden="true">
+          {avatar}
+        </span>
+      )}
       <div>
         {pinned && (
           <p className="pinned">
@@ -255,13 +297,20 @@ function RealTweetCard({
           </p>
         )}
         <p className="x-tweet-byline">
-          <a href={tweet.url} target="_blank" rel="noreferrer">
-            <strong>{tweet.name}</strong>{" "}
-            <span>@{tweet.handle} · from X</span>
-          </a>
+          {tweet.url ? (
+            <a href={tweet.url} target="_blank" rel="noreferrer">
+              <strong>{tweet.name}</strong>{" "}
+              <span>@{tweet.handle} · {tweet.sourceLabel || "from X"}</span>
+            </a>
+          ) : (
+            <span>
+              <strong>{tweet.name}</strong>{" "}
+              <span>@{tweet.handle} · {tweet.sourceLabel || "demo"}</span>
+            </span>
+          )}
         </p>
         <p className="x-tweet-text">{tweet.text}</p>
-        {tweet.mediaUrl && (
+        {tweet.mediaUrl && tweet.url && (
           <a
             className="x-tweet-media"
             href={tweet.url}
@@ -1362,7 +1411,7 @@ export default function Home() {
                 </div>
 
                 {REAL_TWEETS.map((tweet) => (
-                  <RealTweetCard key={tweet.url} tweet={tweet} />
+                  <RealTweetCard key={`${tweet.handle}-${tweet.likes}`} tweet={tweet} />
                 ))}
               </div>
 
@@ -1556,9 +1605,9 @@ export default function Home() {
                   </div>
                 </section>
 
-                {REAL_TWEETS.slice(0, 4).map((tweet, index) => (
+                {REAL_TWEETS.slice(0, 6).map((tweet, index) => (
                   <RealTweetCard
-                    key={tweet.url}
+                    key={`${tweet.handle}-${tweet.likes}`}
                     tweet={tweet}
                     variant="mobile"
                     pinned={index === 0}
