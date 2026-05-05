@@ -24,6 +24,7 @@ import {
   Monitor,
   MoreHorizontal,
   Navigation,
+  Pencil,
   Pin,
   Plus,
   RefreshCcw,
@@ -586,15 +587,16 @@ function LinkedInDesktopPreview(props: PlatformPreviewProps) {
           <section className="linkedin-card linkedin-profile-card">
             <LinkedInBannerPreview {...props} />
             <span className="linkedin-edit-dot" aria-hidden="true">
-              <ImagePlus size={18} />
+              <Pencil size={18} />
             </span>
             <LinkedInAvatar
               editTarget={props.editTarget}
               profileImage={props.profileImage}
             />
-            <span className="linkedin-cover-edit" aria-hidden="true">
-              <ImagePlus size={18} />
-            </span>
+            <div className="linkedin-profile-tools" aria-hidden="true">
+              <span className="linkedin-profile-badge">in</span>
+              <Pencil size={22} />
+            </div>
             <div className="linkedin-profile-copy">
               <div className="linkedin-profile-heading">
                 <div>
@@ -656,7 +658,7 @@ function LinkedInDesktopPreview(props: PlatformPreviewProps) {
                 <i />
                 <i />
               </span>
-              <span>Brian Kroll and 7 others</span>
+              <span>Kramer and 7 others</span>
               <span>2 comments</span>
             </div>
             <div className="linkedin-post-actions">
@@ -707,7 +709,7 @@ function LinkedInDesktopPreview(props: PlatformPreviewProps) {
                 <span className="linkedin-comment-avatar">TK</span>
                 <div>
                   <p>
-                    <strong>Todd Kitta</strong>
+                    <strong>George Kostanza</strong>
                     <small>1st · 6d · ··</small>
                   </p>
                   <span>

@@ -1926,8 +1926,7 @@ button:focus-visible,
   font-weight: 850;
 }
 
-.linkedin-edit-dot,
-.linkedin-cover-edit {
+.linkedin-edit-dot {
   position: absolute;
   display: grid;
   width: 34px;
@@ -1943,11 +1942,32 @@ button:focus-visible,
   right: 22px;
 }
 
-.linkedin-cover-edit {
-  top: 220px;
-  right: 28px;
-  background: transparent;
+.linkedin-profile-tools {
+  position: absolute;
+  top: 236px;
+  right: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 26px;
   color: #333;
+}
+
+.linkedin-profile-badge {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 2px;
+  background: #c37d16;
+  color: white;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.linkedin-profile-tools svg {
+  stroke-width: 2.8;
 }
 
 .linkedin-suggested-card,
