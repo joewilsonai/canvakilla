@@ -43,7 +43,7 @@ const DEFAULT_ALLOWED_PROVIDER_IMAGE_HOSTS = [
 const MODEL_CONFIGS = {
   "openai/gpt-5.4-image-2": {
     label: "GPT Image 2",
-    bannerAspectRatio: null,
+    bannerAspectRatio: "21:9",
     profileAspectRatio: "1:1",
   },
   "google/gemini-3.1-flash-image-preview": {

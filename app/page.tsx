@@ -451,9 +451,31 @@ function getDataUrlBytes(dataUrl: string) {
 }
 
 async function dataUrlToFile(dataUrl: string, name: string) {
-  const response = await fetch(dataUrl);
-  const blob = await response.blob();
-  return new File([blob], name, { type: blob.type || "image/png" });
+  const match = dataUrl.match(/^data:([^;,]+)?(;base64)?,([\s\S]*)$/);
+
+  if (!match) {
+    throw new Error("Could not read the current image for iteration.");
+  }
+
+  const mimeType = match[1] || "image/png";
+  const isBase64 = Boolean(match[2]);
+  const payload = match[3] || "";
+  const bytes = isBase64
+    ? base64ToBytes(payload)
+    : new TextEncoder().encode(decodeURIComponent(payload));
+
+  return new File([bytes], name, { type: mimeType });
+}
+
+function base64ToBytes(base64: string) {
+  const binary = atob(base64.replace(/\s/g, ""));
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return bytes;
 }
 
 function drawCoverImage(
