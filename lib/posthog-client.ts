@@ -9,6 +9,7 @@ const ALLOWED_EVENT_PROPERTIES = {
   image_generated: ["model", "target", "has_current_image", "reference_count"],
   image_generation_failed: ["model", "target", "error_kind"],
   model_changed: ["model"],
+  current_image_moved_to_references: ["target"],
   prompt_starter_clicked: ["starter_index", "target"],
   reference_images_added: ["count"],
   source_image_uploaded: ["target"],

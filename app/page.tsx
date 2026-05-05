@@ -1030,6 +1030,56 @@ export default function Home() {
     );
   }
 
+  function moveBannerToReferences() {
+    if (!currentImage) return;
+
+    const movedImageBytes = getDataUrlBytes(currentImage);
+    if (movedImageBytes > MAX_CLIENT_TOTAL_IMAGE_BYTES) {
+      setError("That banner is too large to save as a reference.");
+      return;
+    }
+
+    const createdAt = new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    setReferences((items) => {
+      const withoutDuplicate = items.filter((item) => item.image !== currentImage);
+      const movedReference: ReferenceItem = {
+        id: crypto.randomUUID(),
+        image: currentImage,
+        name: "moved-banner.png",
+        label: `R${getNextReferenceNumber(withoutDuplicate) + 1}`,
+        createdAt,
+      };
+      const nextItems = [movedReference, ...withoutDuplicate].slice(
+        0,
+        MAX_STORED_REFERENCE_IMAGES,
+      );
+      let totalBytes = nextItems.reduce(
+        (total, reference) => total + getDataUrlBytes(reference.image),
+        0,
+      );
+
+      while (
+        totalBytes > MAX_CLIENT_TOTAL_IMAGE_BYTES &&
+        nextItems.length > 1
+      ) {
+        const removedReference = nextItems.pop();
+        totalBytes -= removedReference
+          ? getDataUrlBytes(removedReference.image)
+          : 0;
+      }
+
+      return nextItems;
+    });
+    setCurrentImage("");
+    setError("");
+    setStatus("Banner moved to references");
+    captureClientEvent("current_image_moved_to_references", { target: "banner" });
+  }
+
   async function clearAllLocalData() {
     const confirmed = window.confirm(
       "Clear all local CanvaKilla data from this browser? This removes saved references, profile photos, generated images, prompts, and history.",
@@ -1270,6 +1320,18 @@ export default function Home() {
               )}
               Template
             </button>
+            {editTarget === "banner" && (
+              <button
+                className="icon-action"
+                type="button"
+                onClick={moveBannerToReferences}
+                disabled={!currentImage}
+                title="Move current banner out of the X preview and into references"
+              >
+                <ImagePlus size={18} aria-hidden="true" />
+                Move to Refs
+              </button>
+            )}
             <button
               className="icon-action"
               type="button"
