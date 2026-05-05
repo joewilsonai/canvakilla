@@ -626,25 +626,116 @@ function LinkedInDesktopPreview(props: PlatformPreviewProps) {
           </section>
 
           <section className="linkedin-card linkedin-post-card">
-            <div className="linkedin-post-byline">
+            <div className="linkedin-post-header">
+              <LinkedInAvatar
+                editTarget="banner"
+                profileImage={props.profileImage}
+                mobile
+              />
+              <div className="linkedin-post-author">
+                <p>
+                  <strong>Joe Wilson</strong>
+                  <span className="linkedin-post-badge">in</span>
+                  <span>· You</span>
+                </p>
+                <small>
+                  AI strategist + founder of AI Builders Club · 25 yrs of
+                  software at Microsoft, ...
+                </small>
+                <a>Visit my website</a>
+              </div>
+              <MoreHorizontal size={21} aria-hidden="true" />
+            </div>
+            <p className="linkedin-post-body">
+              The profile banner should make the first impression before the crop
+              math gets a vote. CanvaKilla makes the invisible crop guards obvious
+              before you publish.
+            </p>
+            <div className="linkedin-post-social">
+              <span className="linkedin-reaction-icons" aria-hidden="true">
+                <i />
+                <i />
+              </span>
+              <span>Brian Kroll and 7 others</span>
+              <span>2 comments</span>
+            </div>
+            <div className="linkedin-post-actions">
+              <span>
+                <Heart size={18} aria-hidden="true" />
+                Like
+              </span>
+              <span>
+                <MessageCircle size={18} aria-hidden="true" />
+                Comment
+              </span>
+              <span>
+                <Repeat2 size={18} aria-hidden="true" />
+                Repost
+              </span>
+              <span>
+                <Navigation size={18} aria-hidden="true" />
+                Send
+              </span>
+            </div>
+            <div className="linkedin-post-analytics">
+              <strong>
+                <BarChart3 size={18} aria-hidden="true" />
+                599 impressions
+              </strong>
+              <a>View analytics</a>
+            </div>
+            <div className="linkedin-comment-box">
               <LinkedInAvatar
                 editTarget="banner"
                 profileImage={props.profileImage}
                 mobile
               />
               <span>
-                <strong>Joe Wilson</strong>
-                <small>Building CanvaKilla · now</small>
+                Add a comment...
+                <ImagePlus size={18} aria-hidden="true" />
               </span>
             </div>
-            <p>
-              The profile banner should make the first impression before the crop
-              math gets a vote.
-            </p>
-            <div className="linkedin-post-stats">
-              <span>312 reactions</span>
-              <span>48 comments</span>
-              <span>{props.references.length || 1} reference checked</span>
+            <div className="linkedin-reaction-row" aria-hidden="true">
+              {["TK", "BK", "AK", "DA", "SA", "JW", "BC"].map((initials) => (
+                <span key={initials}>{initials}</span>
+              ))}
+              <strong>...</strong>
+            </div>
+            <small className="linkedin-comment-sort">Most relevant ▾</small>
+            <div className="linkedin-comment-thread">
+              <div className="linkedin-comment">
+                <span className="linkedin-comment-avatar">TK</span>
+                <div>
+                  <p>
+                    <strong>Todd Kitta</strong>
+                    <small>1st · 6d · ··</small>
+                  </p>
+                  <span>
+                    This is exactly the thing people miss. Looks fine on desktop,
+                    then mobile eats the punchline.
+                  </span>
+                  <small>Like · Reply · 1</small>
+                </div>
+              </div>
+              <div className="linkedin-comment is-reply">
+                <LinkedInAvatar
+                  editTarget="banner"
+                  profileImage={props.profileImage}
+                  mobile
+                />
+                <div>
+                  <p>
+                    <strong>Joe Wilson</strong>
+                    <em>Author</em>
+                    <small>6d · ··</small>
+                  </p>
+                  <span>
+                    Exactly. CanvaKilla is just making the invisible crop math
+                    visible before you ship the banner.
+                  </span>
+                  <small>Like · Reply · 31</small>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -1200,7 +1291,8 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
   const activeHistory = editTarget === "profile" ? profileHistory : history;
   const activePromptStarters =
     editTarget === "profile" ? config.profilePrompts : config.bannerPrompts;
-  const activeTargetName = editTarget === "profile" ? "profile photo" : "banner";
+  const activeTargetName =
+    editTarget === "profile" ? config.profileLabel : config.bannerLabel;
   const activeSize =
     editTarget === "profile" ? config.profileSizeLabel : config.bannerSize.label;
   const previewModeLabel = previewMode === "mobile" ? "Mobile" : "Desktop";
@@ -1272,9 +1364,22 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
         setProfileImage(savedState.profileImage || "");
         setProfileName(savedState.profileName || "");
         setCurrentImage(savedState.currentImage || "");
-        setPrompt(savedState.prompt || config.bannerPrompts[0]);
+        const restoredTarget: EditTarget =
+          savedState.editTarget === "profile" ? "profile" : "banner";
+        const restoredPrompt =
+          savedState.prompt ||
+          (restoredTarget === "profile"
+            ? config.profilePrompts[0]
+            : config.bannerPrompts[0]);
+        const normalizedPrompt =
+          restoredTarget === "profile" && config.bannerPrompts.includes(restoredPrompt)
+            ? config.profilePrompts[0]
+            : restoredTarget === "banner" && config.profilePrompts.includes(restoredPrompt)
+              ? config.bannerPrompts[0]
+              : restoredPrompt;
+        setPrompt(normalizedPrompt);
         setModel(normalizeModelId(savedState.model || MODELS[0].id));
-        setEditTarget(savedState.editTarget === "profile" ? "profile" : "banner");
+        setEditTarget(restoredTarget);
         setPreviewMode(
           savedState.previewMode === "mobile" ? "mobile" : "desktop",
         );
@@ -1300,7 +1405,13 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     return () => {
       isMounted = false;
     };
-  }, [config.bannerPrompts, dismissedCropTipsKey, firstRunDoneKey, workspaceKey]);
+  }, [
+    config.bannerPrompts,
+    config.profilePrompts,
+    dismissedCropTipsKey,
+    firstRunDoneKey,
+    workspaceKey,
+  ]);
 
   useEffect(() => {
     if (!workspaceLoaded) return;
@@ -1985,7 +2096,9 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                 onChange={(event) => setPrompt(event.target.value)}
                 placeholder={
                   showFirstRunNudge
-                    ? 'Try: "Make this more dramatic"\nTry: "Add a sci-fi feel"'
+                    ? editTarget === "profile"
+                      ? 'Try: "Make this a polished professional headshot"\nTry: "Clean background, square format, circular crop"'
+                      : 'Try: "Make this more dramatic"\nTry: "Add a sci-fi feel"'
                     : `Describe the next ${activeTargetName} edit`
                 }
                 rows={8}
