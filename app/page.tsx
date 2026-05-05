@@ -67,6 +67,7 @@ type GenerateResponse = {
 };
 
 type UploadImageKind = "banner" | "profile" | "reference";
+type CropTipId = "crop" | "avatar" | "mobile-action";
 
 type PersistedWorkspace = {
   editTarget?: EditTarget;
@@ -82,6 +83,21 @@ type PersistedWorkspace = {
   templateVisible: boolean;
   history: HistoryItem[];
   profileHistory?: HistoryItem[];
+};
+
+const CROP_TIPS: Record<CropTipId, { label: string; body: string }> = {
+  crop: {
+    label: "Crop guard",
+    body: "X may crop the top and bottom 60 pixels of your banner on certain displays. Keep important details out of these strips.",
+  },
+  avatar: {
+    label: "Avatar quiet zone",
+    body: "Your profile picture overlaps this area as a circle. Anything placed here gets covered, so treat it as visually quiet space.",
+  },
+  "mobile-action": {
+    label: "Mobile action zone",
+    body: "X mobile shows Follow, Edit profile, or Message buttons over this area. Keep it quiet so the buttons do not fight your design.",
+  },
 };
 
 function GrokIcon({
@@ -110,6 +126,8 @@ function GrokIcon({
 const WORKSPACE_DB = "x-banner-maker";
 const WORKSPACE_STORE = "workspace";
 const WORKSPACE_KEY = "current";
+const FIRST_RUN_DONE_KEY = "canvakilla_first_run_done";
+const DISMISSED_CROP_TIPS_KEY = "canvakilla_dismissed_crop_tips";
 const MAX_REFERENCE_IMAGES_PER_RUN = 12;
 const MAX_STORED_REFERENCE_IMAGES = 24;
 const MAX_CLIENT_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -354,6 +372,52 @@ function RealTweetCard({
         </div>
       </div>
     </article>
+  );
+}
+
+function CropGuardTooltip({
+  id,
+  dismissed,
+  onDismiss,
+}: {
+  id: CropTipId;
+  dismissed: boolean;
+  onDismiss: (id: CropTipId) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const tip = CROP_TIPS[id];
+
+  if (dismissed) return null;
+
+  return (
+    <span className="crop-tip">
+      <button
+        type="button"
+        aria-expanded={isOpen}
+        aria-label={`Explain ${tip.label}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          setIsOpen((open) => !open);
+        }}
+      >
+        ?
+      </button>
+      {isOpen && (
+        <span className="crop-tip-popover" role="note">
+          <strong>{tip.label}</strong>
+          <small>{tip.body}</small>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDismiss(id);
+            }}
+          >
+            Got it
+          </button>
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -729,6 +793,8 @@ export default function Home() {
   const [profileHistory, setProfileHistory] = useState<HistoryItem[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false);
+  const [firstRunDone, setFirstRunDone] = useState(false);
+  const [dismissedCropTips, setDismissedCropTips] = useState<CropTipId[]>([]);
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState("");
 
@@ -742,13 +808,49 @@ export default function Home() {
   const runReferences = references.slice(0, MAX_REFERENCE_IMAGES_PER_RUN);
   const canGenerate = prompt.trim().length > 0 && !isGenerating;
   const canExport = Boolean(activeImage);
+  const showFirstRunNudge = !firstRunDone && references.length === 0 && !activeImage;
+  const sourceSummary = [
+    activeImage ? `Iterating current ${activeTargetName}` : `Creating ${activeTargetName}`,
+    runReferences.length
+      ? `using ${runReferences.length} reference${runReferences.length === 1 ? "" : "s"}`
+      : "no references selected",
+  ].join(" · ");
 
   const selectedModelLabel = useMemo(() => {
     return MODELS.find((item) => item.id === model)?.label || "Image model";
   }, [model]);
 
+  function markFirstRunDone() {
+    if (firstRunDone) return;
+    setFirstRunDone(true);
+    window.localStorage.setItem(FIRST_RUN_DONE_KEY, "1");
+  }
+
+  function dismissCropTip(id: CropTipId) {
+    setDismissedCropTips((items) => {
+      if (items.includes(id)) return items;
+      const nextItems = [...items, id];
+      window.localStorage.setItem(DISMISSED_CROP_TIPS_KEY, JSON.stringify(nextItems));
+      return nextItems;
+    });
+  }
+
   useEffect(() => {
     let isMounted = true;
+
+    setFirstRunDone(window.localStorage.getItem(FIRST_RUN_DONE_KEY) === "1");
+    try {
+      const dismissed = JSON.parse(
+        window.localStorage.getItem(DISMISSED_CROP_TIPS_KEY) || "[]",
+      ) as CropTipId[];
+      if (Array.isArray(dismissed)) {
+        setDismissedCropTips(
+          dismissed.filter((id): id is CropTipId => id in CROP_TIPS),
+        );
+      }
+    } catch {
+      setDismissedCropTips([]);
+    }
 
     readWorkspaceState()
       .then((savedState) => {
@@ -893,6 +995,7 @@ export default function Home() {
     captureClientEvent("reference_images_added", {
       count: imageFiles.length,
     });
+    markFirstRunDone();
     setError("");
     setStatus(
       imageFiles.length === 1
@@ -919,6 +1022,7 @@ export default function Home() {
     setProfileName(file.name);
     setProfileHistory([]);
     captureClientEvent("source_image_uploaded", { target: "profile" });
+    markFirstRunDone();
     setError("");
     setStatus("Profile photo loaded");
   }
@@ -976,7 +1080,7 @@ export default function Home() {
 
     setIsGenerating(true);
     setError("");
-    setStatus(`${selectedModelLabel} is composing the ${activeTargetName}`);
+    setStatus(`${selectedModelLabel} is composing · ${sourceSummary}`);
 
     try {
       const formData = new FormData();
@@ -1079,6 +1183,7 @@ export default function Home() {
         has_current_image: editTarget === "banner" ? !!currentImage : !!profileImage,
         reference_count: runReferences.length,
       });
+      markFirstRunDone();
 
       setStatus(
         editTarget === "profile"
@@ -1268,10 +1373,14 @@ export default function Home() {
     setPreviewMode("desktop");
     setHistory([]);
     setProfileHistory([]);
+    setFirstRunDone(false);
+    setDismissedCropTips([]);
     setError("");
 
     if (typeof window !== "undefined") {
       window.localStorage.removeItem("canvakilla-session-id");
+      window.localStorage.removeItem(FIRST_RUN_DONE_KEY);
+      window.localStorage.removeItem(DISMISSED_CROP_TIPS_KEY);
     }
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (profileInputRef.current) profileInputRef.current.value = "";
@@ -1343,7 +1452,11 @@ export default function Home() {
             </span>
             <span>
               <strong>Upload references</strong>
-              <small>Newest stays on top</small>
+              <small>
+                {showFirstRunNudge
+                  ? "Drop your headshot or any reference image here ->"
+                  : "Newest stays on top"}
+              </small>
             </span>
           </label>
 
@@ -1438,8 +1551,19 @@ export default function Home() {
                 id="prompt"
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
+                placeholder={
+                  showFirstRunNudge
+                    ? 'Try: "Make this more dramatic"\nTry: "Add a sci-fi feel"'
+                    : `Describe the next ${activeTargetName} edit`
+                }
                 rows={8}
               />
+              <small className="source-helper">
+                {activeImage
+                  ? `Current ${activeTargetName} is always iterated.`
+                  : `No current ${activeTargetName} yet.`}{" "}
+                Click a reference to call it out in the prompt. {sourceSummary}.
+              </small>
             </label>
 
             <div className="prompt-chips" aria-label="Prompt starters">
@@ -1678,18 +1802,46 @@ export default function Home() {
                   )}
 
                   {templateVisible && (
-                    <div className="template-layer" aria-hidden="true">
+                    <div className="template-layer" aria-label="X crop guard template">
                       <div className="crop-guide top">
-                        <span>crop guard</span>
+                        <span>
+                          crop guard
+                          <CropGuardTooltip
+                            id="crop"
+                            dismissed={dismissedCropTips.includes("crop")}
+                            onDismiss={dismissCropTip}
+                          />
+                        </span>
                       </div>
                       <div className="crop-guide bottom">
-                        <span>crop guard</span>
+                        <span>
+                          crop guard
+                          <CropGuardTooltip
+                            id="crop"
+                            dismissed={dismissedCropTips.includes("crop")}
+                            onDismiss={dismissCropTip}
+                          />
+                        </span>
                       </div>
                       <div className="quiet-zone">
-                        <span>quiet zone</span>
+                        <span>
+                          avatar zone
+                          <CropGuardTooltip
+                            id="avatar"
+                            dismissed={dismissedCropTips.includes("avatar")}
+                            onDismiss={dismissCropTip}
+                          />
+                        </span>
                       </div>
                       <div className="mobile-action-zone">
-                        <span>mobile action</span>
+                        <span>
+                          mobile action
+                          <CropGuardTooltip
+                            id="mobile-action"
+                            dismissed={dismissedCropTips.includes("mobile-action")}
+                            onDismiss={dismissCropTip}
+                          />
+                        </span>
                       </div>
                       <div className="content-rail">
                         <span>primary content</span>
@@ -1875,12 +2027,29 @@ export default function Home() {
                   )}
 
                   {templateVisible && (
-                    <div className="template-layer mobile-template" aria-hidden="true">
+                    <div
+                      className="template-layer mobile-template"
+                      aria-label="Mobile X quiet-zone template"
+                    >
                       <div className="quiet-zone">
-                        <span>avatar</span>
+                        <span>
+                          avatar
+                          <CropGuardTooltip
+                            id="avatar"
+                            dismissed={dismissedCropTips.includes("avatar")}
+                            onDismiss={dismissCropTip}
+                          />
+                        </span>
                       </div>
                       <div className="mobile-action-zone">
-                        <span>mobile action</span>
+                        <span>
+                          mobile action
+                          <CropGuardTooltip
+                            id="mobile-action"
+                            dismissed={dismissedCropTips.includes("mobile-action")}
+                            onDismiss={dismissCropTip}
+                          />
+                        </span>
                       </div>
                     </div>
                   )}
