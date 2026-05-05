@@ -1117,15 +1117,95 @@ function drawCoverImage(
   );
 }
 
-function wantsLinkedInOperatorTypeLock(prompt: string) {
+type LinkedInTypeLockSpec = {
+  headlineLines: string[];
+  subline: string;
+};
+
+function isPromptDirectiveLine(line: string) {
+  return /^(make|add|then|under|aesthetic|flat|no |no,|strong|keep|lower-|lower |wide |dark |right side|on the|the single)\b/i.test(
+    line,
+  );
+}
+
+function trimInlineDirectiveTail(line: string) {
+  return line
+    .split(
+      /\s+(?:Make the period|Add a short|Under the divider|Aesthetic:|Flat graphic|NO\s|No gradients|Strong negative|Keep all|Lower-left|Lower-right)\b/i,
+    )[0]
+    .trim();
+}
+
+function cleanExactTextLine(line: string) {
+  return trimInlineDirectiveTail(line)
+    .replace(/^["'“”]+/, "")
+    .replace(/["'“”]+$/, "")
+    .trim();
+}
+
+function extractReadingExactlyBlocks(prompt: string) {
+  const blocks: string[][] = [];
+  const marker = /reading exactly:/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = marker.exec(prompt))) {
+    const lines = prompt.slice(marker.lastIndex).split(/\r?\n/);
+    const collected: string[] = [];
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+
+      if (!line) {
+        if (collected.length) break;
+        continue;
+      }
+
+      if (collected.length && isPromptDirectiveLine(line)) break;
+
+      const cleanLine = cleanExactTextLine(line);
+      if (cleanLine) collected.push(cleanLine);
+
+      if (rawLine === lines[0] && !prompt.slice(marker.lastIndex).startsWith("\n")) {
+        break;
+      }
+    }
+
+    if (collected.length) blocks.push(collected);
+  }
+
+  return blocks;
+}
+
+function getLinkedInTypeLockSpec(prompt: string): LinkedInTypeLockSpec | null {
   const normalized = prompt.toLowerCase();
-  return (
+  if (
     normalized.includes("not just talking about ai") &&
     normalized.includes("shipping it") &&
     normalized.includes("microsoft") &&
     normalized.includes("amazon") &&
     normalized.includes("rapsodo")
-  );
+  ) {
+    return {
+      headlineLines: ["not just talking", "about AI.", "shipping it."],
+      subline: "microsoft \u2192 amazon \u2192 rapsodo \u2192 solo",
+    };
+  }
+
+  const exactBlocks = extractReadingExactlyBlocks(prompt);
+  const headlineLines = exactBlocks[0]?.slice(0, 4) || [];
+  const subline = exactBlocks[1]?.join(" ") || "";
+
+  if (!headlineLines.length || !subline) return null;
+  if (!normalized.includes("linkedin") && !normalized.includes("banner")) return null;
+  if (
+    !normalized.includes("monospace") &&
+    !normalized.includes("typography") &&
+    !normalized.includes("typewriter")
+  ) {
+    return null;
+  }
+
+  return { headlineLines, subline };
 }
 
 function drawSubtleGrid(context: CanvasRenderingContext2D, width: number, height: number) {
@@ -1160,7 +1240,30 @@ function drawMonoText(
   context.fillText(text, x, y);
 }
 
-function renderLinkedInOperatorTypeBanner() {
+function fitMonoFontSize(
+  context: CanvasRenderingContext2D,
+  lines: string[],
+  weight: number,
+  startSize: number,
+  minSize: number,
+  maxWidth: number,
+) {
+  let size = startSize;
+
+  while (size > minSize) {
+    context.font = `${weight} ${size}px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace`;
+    const widest = Math.max(...lines.map((line) => context.measureText(line).width));
+    if (widest <= maxWidth) return size;
+    size -= 2;
+  }
+
+  return minSize;
+}
+
+function renderLinkedInTypeLockBanner(prompt: string) {
+  const spec = getLinkedInTypeLockSpec(prompt);
+  if (!spec) return "";
+
   const canvas = document.createElement("canvas");
   canvas.width = 1584;
   canvas.height = 396;
@@ -1177,36 +1280,70 @@ function renderLinkedInOperatorTypeBanner() {
 
   context.textBaseline = "alphabetic";
   context.textAlign = "left";
+  const textX = 760;
+  const maxRight = 1352;
+  const maxTextWidth = maxRight - textX;
+  const headlineFontSize = fitMonoFontSize(
+    context,
+    spec.headlineLines,
+    700,
+    spec.headlineLines.length > 2 ? 52 : 56,
+    36,
+    maxTextWidth,
+  );
   context.font =
-    "700 52px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace";
+    `700 ${headlineFontSize}px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace`;
   context.fillStyle = "#f4ecd9";
   context.shadowColor = "rgba(0, 0, 0, 0.24)";
   context.shadowBlur = 0;
   context.shadowOffsetX = 0;
   context.shadowOffsetY = 1;
 
-  const textX = 790;
-  drawMonoText(context, "not just talking", textX, 116);
-  drawMonoText(context, "about AI.", textX, 176);
-  drawMonoText(context, "shipping it", textX, 236);
+  const lineHeight = Math.round(headlineFontSize * 1.14);
+  const firstY =
+    spec.headlineLines.length <= 2
+      ? 148
+      : Math.max(94, 200 - ((spec.headlineLines.length - 1) * lineHeight) / 2);
+  const redPeriodLineIndex = spec.headlineLines.length - 1;
 
-  const periodX = textX + context.measureText("shipping it").width + 3;
-  context.fillStyle = "#b5222e";
-  drawMonoText(context, ".", periodX, 236);
+  spec.headlineLines.forEach((line, index) => {
+    const y = firstY + index * lineHeight;
+    const shouldRedrawPeriod = index === redPeriodLineIndex && line.endsWith(".");
+    const creamLine = shouldRedrawPeriod ? line.slice(0, -1) : line;
+
+    context.fillStyle = "#f4ecd9";
+    drawMonoText(context, creamLine, textX, y);
+
+    if (shouldRedrawPeriod) {
+      context.fillStyle = "#b5222e";
+      drawMonoText(context, ".", textX + context.measureText(creamLine).width + 3, y);
+    }
+  });
 
   context.shadowColor = "transparent";
   context.fillStyle = "#b5222e";
-  context.fillRect(textX, 262, 92, 5);
+  const dividerY = firstY + spec.headlineLines.length * lineHeight + 18;
+  context.fillRect(textX, dividerY, 92, 5);
 
+  const sublineFontSize = fitMonoFontSize(
+    context,
+    [spec.subline],
+    500,
+    28,
+    18,
+    maxTextWidth,
+  );
   context.font =
-    "500 28px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace";
+    `500 ${sublineFontSize}px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace`;
   context.fillStyle = "rgba(244, 236, 217, 0.48)";
-  drawMonoText(context, "microsoft \u2192 amazon \u2192 rapsodo \u2192 solo", textX, 314);
+  drawMonoText(context, spec.subline, textX, dividerY + 56);
 
   context.font =
     "500 12px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace";
   context.fillStyle = "rgba(244, 236, 217, 0.24)";
-  drawMonoText(context, "made with canvakilla.com", 1138, 346);
+  const credit = "made with canvakilla.com";
+  const creditX = Math.min(1138, maxRight - context.measureText(credit).width);
+  drawMonoText(context, credit, creditX, 346);
 
   return canvas.toDataURL("image/png");
 }
@@ -1777,9 +1914,9 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
       if (
         platform === "linkedin" &&
         editTarget === "banner" &&
-        wantsLinkedInOperatorTypeLock(prompt)
+        getLinkedInTypeLockSpec(prompt)
       ) {
-        const lockedImage = renderLinkedInOperatorTypeBanner();
+        const lockedImage = renderLinkedInTypeLockBanner(prompt);
         if (lockedImage) {
           nextImage = lockedImage;
         }
