@@ -20,7 +20,7 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/og.png",
+        url: "/og-launch.png",
         width: 1200,
         height: 630,
         alt: "CanvaKilla X banner maker with avatar and mobile crop guards.",
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     title,
     description:
       "Crop math kills more banners than bad design. Free until the OpenRouter credits run out.",
-    images: ["/og.png"],
+    images: ["/og-launch.png"],
   },
   icons: {
     icon: "/icon.svg",

@@ -27,8 +27,8 @@
     <rect x="54" y="54" width="1092" height="522" rx="28" fill="#000" stroke="#eff3f4" stroke-opacity=".22"/>
     <rect x="54" y="54" width="300" height="522" rx="28" fill="#000"/>
     <path d="M354 54v522" stroke="#eff3f4" stroke-opacity=".16"/>
-    <text x="88" y="98" fill="#8b98a5" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="800">CANVA SUCKS, INTRODUCING:</text>
-    <text x="88" y="148" fill="#f7f9f9" font-family="Arial, Helvetica, sans-serif" font-size="44" font-weight="900">CanvaKilla.com</text>
+    <text x="82" y="98" fill="#8b98a5" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="800">CANVA SUCKS, INTRODUCING:</text>
+    <text x="82" y="148" fill="#f7f9f9" font-family="Arial, Helvetica, sans-serif" font-size="36" font-weight="900">CanvaKilla.com</text>
     <g fill="#f7f9f9" font-family="Arial, Helvetica, sans-serif" font-size="23" font-weight="800">
       <circle cx="102" cy="222" r="13" fill="#1d9bf0"/><text x="130" y="230">Upload references</text>
       <circle cx="102" cy="286" r="13" fill="#1d9bf0"/><text x="130" y="294">Pick model</text>
@@ -59,10 +59,10 @@
     <text x="384" y="438" fill="#f7f9f9" font-family="Arial, Helvetica, sans-serif" font-size="44" font-weight="900">Joe Wilson</text>
     <circle cx="632" cy="420" r="16" fill="#1d9bf0"/>
     <text x="632" y="431" text-anchor="middle" fill="#000" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="900">✓</text>
-    <text x="384" y="474" fill="#71767b" font-family="Arial, Helvetica, sans-serif" font-size="24">@joewilsonai</text>
-    <text x="384" y="520" fill="#e7e9ea" font-family="Arial, Helvetica, sans-serif" font-size="27">A banner maker that keeps your good ideas out from behind</text>
-    <text x="384" y="556" fill="#e7e9ea" font-family="Arial, Helvetica, sans-serif" font-size="27">avatars, crop edges, and mobile buttons.</text>
+    <text x="384" y="474" fill="#aab8c2" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="800">@joewilsonai</text>
+    <text x="384" y="520" fill="#e7e9ea" font-family="Arial, Helvetica, sans-serif" font-size="27">Keeps banners clear of avatars, crop edges, and mobile buttons.</text>
+    <rect x="384" y="532" width="354" height="36" rx="18" fill="#1d9bf0" fill-opacity=".16" stroke="#1d9bf0" stroke-opacity=".42"/>
+    <text x="561" y="556" text-anchor="middle" fill="#f7f9f9" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="900">Free until OpenRouter dries up</text>
   </g>
-  <text x="1136" y="548" text-anchor="end" fill="#f7f9f9" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="900">Free until OpenRouter dries up</text>
-  <text x="1136" y="582" text-anchor="end" fill="#1d9bf0" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="900">canvakilla.com</text>
+  <text x="1136" y="582" text-anchor="end" fill="#1d9bf0" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="900">canvakilla.com</text>
 </svg>
