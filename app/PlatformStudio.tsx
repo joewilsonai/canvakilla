@@ -599,9 +599,9 @@ function LinkedInDesktopPreview(props: PlatformPreviewProps) {
                     Joe Wilson <span className="linkedin-pronouns">He/Him</span>
                   </h2>
                   <p>
-                    Director, Customer Success at Rapsodo | AI & SaaS Strategist |
-                    Cloud Transformation | Not Just Talking About the Future.
-                    Shaping It.
+                    AI strategist + founder of AI Builders Club · 25 yrs of
+                    software at Microsoft, Amazon, Rapsodo · Not just talking
+                    about the future. Shipping it.
                   </p>
                 </div>
                 <div className="linkedin-affiliations" aria-hidden="true">
@@ -752,9 +752,15 @@ function LinkedInMobilePreview(props: PlatformPreviewProps) {
             mobile
           />
           <div className="linkedin-mobile-copy">
-            <h2>Joe Wilson</h2>
-            <p>Building profile-safe AI visuals for founders and teams.</p>
-            <small>Founder tools · AI workflows · Product launches</small>
+            <h2>
+              Joe Wilson <span className="linkedin-pronouns">He/Him</span>
+            </h2>
+            <p>
+              AI strategist + founder of AI Builders Club · 25 yrs of software
+              at Microsoft, Amazon, Rapsodo · Not just talking about the future.
+              Shipping it.
+            </p>
+            <small>Greater St. Louis · 2,448 followers · 500+ connections</small>
             <div className="linkedin-actions">
               <span>Connect</span>
               <span>Message</span>
