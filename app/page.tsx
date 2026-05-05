@@ -32,6 +32,7 @@ import {
   Share2,
   Sparkles,
   Smartphone,
+  Trash2,
   Upload,
   UserRound,
   X as XIcon,
@@ -113,7 +114,6 @@ const MAX_STORED_REFERENCE_IMAGES = 24;
 const MAX_CLIENT_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_CLIENT_TOTAL_IMAGE_BYTES = 32 * 1024 * 1024;
 const ACCEPTED_CLIENT_IMAGE_TYPES = new Set([
-  "image/gif",
   "image/jpeg",
   "image/png",
   "image/webp",
@@ -364,6 +364,18 @@ function openWorkspaceDb() {
   });
 }
 
+function deleteWorkspaceDb() {
+  if (typeof indexedDB === "undefined") return Promise.resolve();
+
+  return new Promise<void>((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(WORKSPACE_DB);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => reject(new Error("Workspace storage is busy."));
+  });
+}
+
 function normalizeModelId(modelId: string) {
   const nextModel = LEGACY_MODEL_IDS[modelId] || modelId;
   return MODELS.some((item) => item.id === nextModel) ? nextModel : MODELS[0].id;
@@ -541,6 +553,28 @@ function drawProfileProof(context: CanvasRenderingContext2D) {
   context.restore();
 }
 
+function getGenerationErrorKind(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("rate limit") || normalized.includes("too many")) {
+    return "rate_limited";
+  }
+  if (normalized.includes("unavailable") || normalized.includes("api key")) {
+    return "provider_unavailable";
+  }
+  if (normalized.includes("too large") || normalized.includes("size")) {
+    return "payload_limit";
+  }
+  if (normalized.includes("network") || normalized.includes("fetch")) {
+    return "network";
+  }
+  if (normalized.includes("no image")) {
+    return "empty_response";
+  }
+
+  return "generation_failed";
+}
+
 export default function Home() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const profileInputRef = useRef<HTMLInputElement | null>(null);
@@ -675,7 +709,7 @@ export default function Home() {
 
     if (!imageFiles.length) return;
     if (imageFiles.length !== selectedFiles.length) {
-      setError("Only PNG, JPEG, WebP, and GIF images can be added.");
+      setError("Only PNG, JPEG, and WebP images can be added.");
       return;
     }
 
@@ -734,7 +768,7 @@ export default function Home() {
     const file = files?.[0];
     if (!file) return;
     if (!ACCEPTED_CLIENT_IMAGE_TYPES.has(file.type)) {
-      setError("Choose a PNG, JPEG, WebP, or GIF profile image.");
+      setError("Choose a PNG, JPEG, or WebP profile image.");
       return;
     }
 
@@ -888,7 +922,7 @@ export default function Home() {
       captureClientEvent("image_generation_failed", {
         model,
         target: editTarget,
-        error_message: errorMessage,
+        error_kind: getGenerationErrorKind(errorMessage),
       });
       setError(errorMessage);
       setStatus("Needs attention");
@@ -997,6 +1031,40 @@ export default function Home() {
     );
   }
 
+  async function clearAllLocalData() {
+    const confirmed = window.confirm(
+      "Clear all local CanvaKilla data from this browser? This removes saved references, profile photos, generated images, prompts, and history.",
+    );
+
+    if (!confirmed) return;
+
+    setReferences([]);
+    setProfileImage("");
+    setProfileName("");
+    setCurrentImage("");
+    setPrompt(BANNER_PROMPTS[0]);
+    setModel(MODELS[0].id);
+    setTemplateVisible(true);
+    setEditTarget("banner");
+    setPreviewMode("desktop");
+    setHistory([]);
+    setProfileHistory([]);
+    setError("");
+
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("canvakilla-session-id");
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (profileInputRef.current) profileInputRef.current.value = "";
+
+    try {
+      await deleteWorkspaceDb();
+      setStatus("Local images, prompts, and history cleared");
+    } catch {
+      setStatus("Cleared current view; reload if local storage was busy");
+    }
+  }
+
   return (
     <main className="app-shell">
       <section className="workspace" aria-label="X banner maker">
@@ -1047,7 +1115,7 @@ export default function Home() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
+              accept="image/png,image/jpeg,image/webp"
               multiple
               onChange={(event) => handleFiles(event.target.files)}
             />
@@ -1094,7 +1162,7 @@ export default function Home() {
             <input
               ref={profileInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
+              accept="image/png,image/jpeg,image/webp"
               onChange={(event) => handleProfileFiles(event.target.files)}
             />
             <span className="profile-thumb" data-empty={!profileImage}>
@@ -1222,6 +1290,17 @@ export default function Home() {
             >
               <Layers size={18} aria-hidden="true" />
               Proof PNG
+            </button>
+          </div>
+
+          <div className="privacy-control">
+            <p>
+              Local-only autosave keeps images, prompts, and history in this
+              browser's IndexedDB.
+            </p>
+            <button type="button" onClick={clearAllLocalData}>
+              <Trash2 size={16} aria-hidden="true" />
+              Clear all local data
             </button>
           </div>
 
@@ -1416,7 +1495,7 @@ export default function Home() {
                   </h3>
                   <p className="x-handle">@joewilsonai</p>
                   <p className="x-bio">
-                    Building profile-safe AI visuals with reusable references.
+                    Banner-safe AI visuals. References reusable. Crop math, solved.
                   </p>
                   <div className="x-meta-row">
                     <span>
@@ -1601,8 +1680,8 @@ export default function Home() {
                   </h3>
                   <p className="x-handle">@joewilsonai</p>
                   <p className="x-mobile-bio">
-                    Building profile-safe AI visuals. Testing banner, avatar,
-                    and mobile button collisions before publishing.
+                    Banner-safe AI visuals. References reusable. Crop math,
+                    solved.
                   </p>
                   <div className="x-mobile-meta">
                     <span>

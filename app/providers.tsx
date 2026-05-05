@@ -3,6 +3,7 @@
 import posthog from "posthog-js";
 import { PostHogProvider as PHProvider } from "posthog-js/react";
 import { useEffect } from "react";
+import { sanitizePostHogCapture } from "../lib/posthog-client";
 
 let isPostHogInitialized = false;
 
@@ -15,7 +16,14 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
       api_host: "/ingest",
       ui_host: "https://us.posthog.com",
       defaults: "2026-01-30",
-      capture_exceptions: true,
+      autocapture: false,
+      capture_exceptions: false,
+      capture_pageleave: false,
+      capture_pageview: false,
+      disable_session_recording: true,
+      advanced_disable_flags: true,
+      respect_dnt: true,
+      before_send: sanitizePostHogCapture,
       debug: process.env.NODE_ENV === "development",
     });
     isPostHogInitialized = true;

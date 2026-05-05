@@ -16,19 +16,19 @@ Open the local URL from the terminal. Upload optional reference images, load you
 
 ## Notes
 
-- API keys stay on the server in `OPENROUTER_API_KEY`.
-- OpenRouter powers the image models so spend can be capped from one provider key.
-- PostHog analytics are optional; set `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` and `NEXT_PUBLIC_POSTHOG_HOST` to enable launch funnel events.
+- API keys stay on the server in `OPENROUTER_API_KEY`; image generation routes through OpenRouter only.
+- OpenRouter powers the image models so spend can be capped from one provider key. There is no direct OpenAI client/provider fallback in this app.
+- PostHog analytics are optional; set `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` and `NEXT_PUBLIC_POSTHOG_HOST` to enable sanitized launch funnel events. Client analytics disables autocapture, exception capture, session recording, pageview/pageleave capture, and raw provider error messages.
 - Link unfurls use `public/og-launch.png` and Next Metadata Open Graph/Twitter card tags.
 - No login is required. Anonymous generation sessions are server-issued as signed, HttpOnly cookies.
 - Set `CANVAKILLA_SESSION_SECRET` in production so session cookies are signed independently from provider keys.
 - Default API limits are 4 generations per minute and 20 per hour per signed session, plus 8 per minute and 40 per hour per IP. Configure with `GENERATION_RATE_LIMIT_PER_MINUTE`, `GENERATION_RATE_LIMIT_PER_HOUR`, `GENERATION_IP_RATE_LIMIT_PER_MINUTE`, and `GENERATION_IP_RATE_LIMIT_PER_HOUR`.
 - `MAX_ACTIVE_GENERATIONS` limits concurrent in-process generations. For heavier launches, move rate-limit and active-generation state to a shared store such as Redis or Vercel KV because in-memory limits are per server instance.
-- Each uploaded image is capped at 8MB, and each generation request is capped at 32MB of source images.
+- Each uploaded image is capped at 8MB and must be PNG, JPEG, or WebP; each generation request is capped at 32MB of source images.
 - Uploaded images are kept as a newest-first reference stack and are not automatically placed into the banner preview.
 - Click a reference card to insert a stable `Reference R#` instruction into the prompt.
 - Uploaded profile photos are shown in the X preview and can be iterated separately in Profile mode.
-- The current workspace autosaves in the browser with IndexedDB, so generated banners survive refreshes and dev-server hot reloads.
+- The current workspace autosaves in the browser with IndexedDB, so uploaded references, profile photos, prompts, generated images, and history survive refreshes and dev-server hot reloads. Use the in-app "Clear all local data" control to remove that IndexedDB workspace from the browser.
 - The preview can switch between a desktop X profile layout and a mobile X profile layout.
 - The template marks the lower-left avatar quiet zone, lower-right mobile action quiet zone, and crop guards.
 - The export canvas crops generated output to X's recommended 1500x500 header size.
