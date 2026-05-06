@@ -15,7 +15,7 @@ export const xPlatform: PlatformConfig = {
   platformName: "X",
   bannerSize: { width: 1500, height: 500, label: "1500x500" },
   profileSizeLabel: "1024x1024",
-  bannerAspectRatio: "21:9",
+  bannerAspectRatio: "3:1",
   bannerProofName: "x-banner-template-proof-1500x500.png",
   bannerDownloadName: "x-banner-1500x500.png",
   profileProofName: "x-profile-picture-circle-proof-1024x1024.png",
