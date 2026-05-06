@@ -78,6 +78,9 @@ Open `http://localhost:3000`, upload a reference image, type a prompt, hit Itera
 | `NEXT_PUBLIC_SITE_URL` | recommended | Used for Open Graph image URLs and OpenRouter `HTTP-Referer` |
 | `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` | optional | Enables analytics; without it the site runs analytics-disabled |
 | `NEXT_PUBLIC_POSTHOG_HOST` | optional | Defaults to `https://us.i.posthog.com` |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | recommended for production | Shared rate limits and active-generation locks across Vercel serverless instances |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | recommended for production | Vercel KV-compatible aliases for the same shared limiter |
+| `CANVAKILLA_REQUIRE_SHARED_LIMITER` | optional | Set to `true` in production to fail closed if Redis/KV is missing or unavailable |
 | `GENERATION_RATE_LIMIT_PER_MINUTE` | optional | Default 4 — per signed session |
 | `GENERATION_RATE_LIMIT_PER_HOUR` | optional | Default 20 — per signed session |
 | `GENERATION_IP_RATE_LIMIT_PER_MINUTE` | optional | Default 8 — per IP |
@@ -91,10 +94,10 @@ Open `http://localhost:3000`, upload a reference image, type a prompt, hit Itera
 ### Security & ops notes
 
 - **Server-issued anonymous sessions** — no login required, but every request is bound to a signed HttpOnly cookie. Set `CANVAKILLA_SESSION_SECRET` in production.
-- **Multi-tier rate limiting** — per signed session AND per IP, plus a separate **cost-weighted limiter** so a user picking GPT Image 2 burns more of the budget than someone picking Nano Banana. Configurable per env var (above).
+- **Multi-tier rate limiting** — per signed session AND per IP, plus a separate **cost-weighted limiter** so a user picking GPT Image 2 burns more of the budget than someone picking Nano Banana. In production, add Upstash Redis or Vercel KV REST env vars so limits and active-generation locks are shared across serverless instances.
 - **Upload validation** — references are capped at 8 MB client-side, must be PNG / JPEG / WebP (validated by magic bytes, not just MIME), and the full request is capped at 4 MB after client-side compression.
 - **PostHog events are sanitized** — autocapture, exception capture, session recording, pageview/pageleave, and raw provider error messages are all disabled. Only the explicit funnel events fire.
-- **In-memory limits are per server instance.** For heavy launches, move rate-limit and active-generation state to a shared store like Vercel KV or Redis.
+- **In-memory limits are dev fallback only.** If shared Redis/KV env vars are missing, production logs a warning and falls back to per-instance limits unless `CANVAKILLA_REQUIRE_SHARED_LIMITER=true` is set.
 
 ## Stack
 
