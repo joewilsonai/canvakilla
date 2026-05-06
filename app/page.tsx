@@ -5,6 +5,12 @@ export default function Home() {
   return (
     <main className="platform-picker">
       <section className="platform-picker-inner" aria-labelledby="platform-picker-title">
+        <img
+          className="home-brand-logo"
+          src="/logo.svg"
+          alt=""
+          aria-hidden="true"
+        />
         <p className="eyebrow">Canva sucks, Introducing:</p>
         <h1 id="platform-picker-title">CanvaKilla.com</h1>
         <p className="platform-picker-tagline">

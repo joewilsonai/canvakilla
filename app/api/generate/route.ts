@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import sharp from "sharp";
@@ -14,6 +14,7 @@ const MAX_REFERENCE_IMAGES_PER_RUN = 12;
 const MAX_SOURCE_IMAGE_BYTES = 2 * 1024 * 1024;
 const MAX_TOTAL_SOURCE_IMAGE_BYTES = 3.6 * 1024 * 1024;
 const MAX_REQUEST_BYTES = 4 * 1024 * 1024;
+const MAX_NORMALIZED_SOURCE_IMAGE_DIMENSION = 2_048;
 const MAX_PROVIDER_IMAGE_BYTES = 18 * 1024 * 1024;
 const MAX_RESPONSE_IMAGE_BYTES = 2.5 * 1024 * 1024;
 const MAX_PROMPT_CHARS = 3_000;
@@ -101,6 +102,7 @@ type ImageInput = {
   buffer?: Buffer;
   mimeType?: ImageMimeType;
   dimensions?: ImageDimensions;
+  sourceDimensions?: ImageDimensions;
 };
 
 type RateBucket = {
@@ -244,6 +246,20 @@ function getSafeImageMimeType(contentType: string): ImageMimeType | "" {
   return ACCEPTED_IMAGE_TYPES.has(mimeType as ImageMimeType)
     ? (mimeType as ImageMimeType)
     : "";
+}
+
+function getPromptLogPreview(prompt: string) {
+  return prompt.replace(/\s+/g, " ").slice(0, 120);
+}
+
+function getPromptLogDetails(prompt: string) {
+  return {
+    prompt_length: prompt.length,
+    prompt_hash: createHash("sha256").update(prompt).digest("hex"),
+    ...(process.env.DEBUG_GENERATION_LOGS === "1"
+      ? { prompt_preview: getPromptLogPreview(prompt) }
+      : {}),
+  };
 }
 
 function buildBannerInstructions({
@@ -800,6 +816,53 @@ function assertImageDimensions(
   }
 }
 
+async function normalizeSourceImageBuffer(
+  buffer: Buffer,
+): Promise<{
+  buffer: Buffer;
+  mimeType: ImageMimeType;
+  dimensions: ImageDimensions;
+}> {
+  const qualitySteps = [88, 78, 68, 58, 48, 38];
+  let lastOutput:
+    | {
+        data: Buffer;
+        info: sharp.OutputInfo;
+      }
+    | undefined;
+
+  for (const quality of qualitySteps) {
+    const output = await sharp(buffer, { limitInputPixels: MAX_SOURCE_IMAGE_PIXELS })
+      .rotate()
+      .resize({
+        width: MAX_NORMALIZED_SOURCE_IMAGE_DIMENSION,
+        height: MAX_NORMALIZED_SOURCE_IMAGE_DIMENSION,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .webp({ quality, effort: 4 })
+      .toBuffer({ resolveWithObject: true });
+
+    lastOutput = output;
+    if (output.data.length <= MAX_SOURCE_IMAGE_BYTES) {
+      return {
+        buffer: output.data,
+        mimeType: "image/webp",
+        dimensions: {
+          width: output.info.width,
+          height: output.info.height,
+        },
+      };
+    }
+  }
+
+  if (lastOutput) {
+    throw new Error("Keep each generation source image under 2MB.");
+  }
+
+  throw new Error("Upload a PNG, JPEG, or WebP image.");
+}
+
 async function validateSourceImage(image: ImageInput): Promise<ImageInput> {
   if (image.file.size > MAX_SOURCE_IMAGE_BYTES) {
     throw new Error("Keep each generation source image under 2MB.");
@@ -821,11 +884,14 @@ async function validateSourceImage(image: ImageInput): Promise<ImageInput> {
     maxPixels: MAX_SOURCE_IMAGE_PIXELS,
   });
 
+  const normalizedImage = await normalizeSourceImageBuffer(buffer);
+
   return {
     ...image,
-    buffer,
-    mimeType,
-    dimensions: dimensions || undefined,
+    buffer: normalizedImage.buffer,
+    mimeType: normalizedImage.mimeType,
+    dimensions: normalizedImage.dimensions,
+    sourceDimensions: dimensions || undefined,
   };
 }
 
@@ -1442,10 +1508,9 @@ export async function POST(request: Request) {
   const referenceImages = formData
     .getAll("referenceImages")
     .filter((image): image is File => image instanceof File && image.size > 0);
-  const referenceLabels = formData
-    .getAll("referenceLabels")
-    .map((label) => String(label).replace(/[\r\n<>]/g, "").slice(0, 40))
-    .slice(0, Math.min(referenceImages.length, MAX_REFERENCE_IMAGES_PER_RUN));
+  const referenceLabels = referenceImages
+    .slice(0, MAX_REFERENCE_IMAGES_PER_RUN)
+    .map((_, index) => `R${index + 1}`);
 
   if (!prompt) {
     return withSessionCookie(
@@ -1484,7 +1549,18 @@ export async function POST(request: Request) {
   }
 
   referenceImages.forEach((file, index) => {
-    rawImages.push({ file, label: referenceLabels[index] || `R${index + 1}` });
+    rawImages.push({ file, label: `R${index + 1}` });
+  });
+
+  console.info("CanvaKilla generation request", {
+    platform,
+    target,
+    model,
+    has_current_image: currentImage instanceof File && currentImage.size > 0,
+    reference_count: referenceImages.length,
+    reference_labels: referenceLabels,
+    ...getPromptLogDetails(prompt),
+    content_length: Number.isFinite(contentLength) ? contentLength : null,
   });
 
   const totalImageBytes = rawImages.reduce((total, image) => total + image.file.size, 0);
@@ -1518,7 +1594,12 @@ export async function POST(request: Request) {
 
   const totalImagePixels = images.reduce(
     (total, image) =>
-      total + (image.dimensions ? image.dimensions.width * image.dimensions.height : 0),
+      total +
+      (image.sourceDimensions
+        ? image.sourceDimensions.width * image.sourceDimensions.height
+        : image.dimensions
+          ? image.dimensions.width * image.dimensions.height
+          : 0),
     0,
   );
 
@@ -1526,6 +1607,20 @@ export async function POST(request: Request) {
     return withSessionCookie(
       NextResponse.json(
         { error: "Uploaded images are too large in total dimensions." },
+        { status: 400 },
+      ),
+      session,
+    );
+  }
+
+  const totalNormalizedImageBytes = images.reduce(
+    (total, image) => total + (image.buffer?.length || image.file.size),
+    0,
+  );
+  if (totalNormalizedImageBytes > MAX_TOTAL_SOURCE_IMAGE_BYTES) {
+    return withSessionCookie(
+      NextResponse.json(
+        { error: "Keep generation source images under 4MB total. Remove a few references and try again." },
         { status: 400 },
       ),
       session,

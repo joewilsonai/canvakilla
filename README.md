@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./public/og-launch.png" alt="CanvaKilla — banner maker that knows where X actually crops" width="100%" />
+<img src="./public/og-image-v2.png" alt="CanvaKilla — banner maker that knows where every platform actually crops" width="100%" />
 
 # CanvaKilla
 

@@ -82,6 +82,7 @@ type PersistedWorkspace = {
   editTarget?: EditTarget;
   previewMode?: PreviewMode;
   references?: ReferenceItem[];
+  selectedReferenceIds?: string[];
   sourceImage: string;
   sourceName: string;
   profileImage: string;
@@ -962,6 +963,38 @@ function getNextReferenceNumber(references: ReferenceItem[]) {
   }, 0);
 }
 
+function normalizeReferenceItems(references: ReferenceItem[]) {
+  return references.map((reference) => ({
+    id: reference.id,
+    image: reference.image,
+    name: reference.name,
+    label: reference.label,
+    createdAt: reference.createdAt,
+  }));
+}
+
+function getReferenceInstruction(reference: ReferenceItem) {
+  return `Use Reference ${reference.label} (${reference.name}) as a visual reference.`;
+}
+
+const REFERENCE_INSTRUCTION_LINE =
+  /^\s*Use Reference R\d{1,3} \([^\n]+\) as a visual reference\.\s*$/gim;
+
+function removeAllReferenceInstructions(prompt: string) {
+  return prompt
+    .replace(REFERENCE_INSTRUCTION_LINE, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function syncReferenceInstructions(prompt: string, selectedReferences: ReferenceItem[]) {
+  const basePrompt = removeAllReferenceInstructions(prompt);
+  const instructions = selectedReferences.map(getReferenceInstruction);
+
+  return [basePrompt, ...instructions].filter(Boolean).join("\n\n").trim();
+}
+
 function getDataUrlBytes(dataUrl: string) {
   const base64 = dataUrl.split(",")[1] || "";
   return Math.ceil((base64.length * 3) / 4);
@@ -1117,10 +1150,40 @@ function drawCoverImage(
   );
 }
 
-type LinkedInTypeLockSpec = {
+type TypeLockSpec = {
   headlineLines: string[];
-  subline: string;
+  subline?: string;
 };
+
+function getPromptTargetHint(prompt: string): EditTarget | null {
+  const normalized = prompt.toLowerCase();
+  let bannerScore = 0;
+  let profileScore = 0;
+
+  bannerScore += (normalized.match(/\b(banner|cover|header)\b/g) || []).length * 2;
+  profileScore +=
+    (normalized.match(/\b(profile picture|profile photo|headshot|avatar)\b/g) || [])
+      .length * 3;
+
+  if (normalized.includes("1584x396") || normalized.includes("1500x500")) {
+    bannerScore += 3;
+  }
+  if (normalized.includes("wide editorial")) bannerScore += 2;
+  if (normalized.includes("circular crop") || normalized.includes("square format")) {
+    profileScore += 2;
+  }
+  if (/\b(make|create|turn|convert|generate)\b[^.?!\n]*(banner|cover|header)\b/.test(normalized)) {
+    bannerScore += 4;
+  }
+  if (/\b(make|create|turn|convert|generate)\b[^.?!\n]*(profile picture|profile photo|headshot|avatar)\b/.test(normalized)) {
+    profileScore += 4;
+  }
+
+  if (bannerScore >= profileScore + 2) return "banner";
+  if (profileScore >= bannerScore + 2) return "profile";
+
+  return null;
+}
 
 function isPromptDirectiveLine(line: string) {
   return /^(make|add|then|under|aesthetic|flat|no |no,|strong|keep|lower-|lower |wide |dark |right side|on the|the single)\b/i.test(
@@ -1176,7 +1239,60 @@ function extractReadingExactlyBlocks(prompt: string) {
   return blocks;
 }
 
-function getLinkedInTypeLockSpec(prompt: string): LinkedInTypeLockSpec | null {
+function extractQuotedPromptText(prompt: string) {
+  return [...prompt.matchAll(/["“]([^"”]+)["”]/g)].map((match) =>
+    match[1].trim(),
+  );
+}
+
+function getQuotedSubline(prompt: string) {
+  const explicitSubline = prompt.match(
+    /(?:smaller|muted|subline|below(?: the divider)?)[^"“]*["“]([^"”]+)["”]/i,
+  )?.[1];
+  if (explicitSubline) return explicitSubline.trim();
+
+  return (
+    extractQuotedPromptText(prompt).find((item) => {
+      const normalized = item.toLowerCase();
+      return (
+        item.includes("\u2192") ||
+        item.includes("->") ||
+        normalized.includes("microsoft") ||
+        normalized.includes("amazon") ||
+        normalized.includes("rapsodo")
+      );
+    }) || ""
+  );
+}
+
+function getQuotedHeadlineLines(prompt: string) {
+  const subline = getQuotedSubline(prompt);
+  const headline = extractQuotedPromptText(prompt).find((item) => {
+    if (item === subline) return false;
+    const normalized = item.toLowerCase();
+    return (
+      normalized !== "made with canvakilla.com" &&
+      !normalized.includes("canvakilla.com") &&
+      !item.includes("\u2192") &&
+      !item.includes("->")
+    );
+  });
+
+  if (!headline) return [];
+
+  const sentenceLines = headline
+    .split(/(?<=\.)\s+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (sentenceLines.length > 1 && sentenceLines.length <= 4) {
+    return sentenceLines;
+  }
+
+  return [headline];
+}
+
+function getTypeLockSpec(prompt: string, platform: PlatformId): TypeLockSpec | null {
   const normalized = prompt.toLowerCase();
   if (
     normalized.includes("not just talking about ai") &&
@@ -1192,15 +1308,24 @@ function getLinkedInTypeLockSpec(prompt: string): LinkedInTypeLockSpec | null {
   }
 
   const exactBlocks = extractReadingExactlyBlocks(prompt);
-  const headlineLines = exactBlocks[0]?.slice(0, 4) || [];
-  const subline = exactBlocks[1]?.join(" ") || "";
+  const headlineLines = exactBlocks[0]?.slice(0, 4) || getQuotedHeadlineLines(prompt);
+  const subline = exactBlocks[1]?.join(" ") || getQuotedSubline(prompt);
 
-  if (!headlineLines.length || !subline) return null;
-  if (!normalized.includes("linkedin") && !normalized.includes("banner")) return null;
+  if (!headlineLines.length) return null;
+  if (
+    !normalized.includes("banner") &&
+    !normalized.includes("cover") &&
+    !normalized.includes("header") &&
+    !normalized.includes(platform === "x" ? "x" : "linkedin")
+  ) {
+    return null;
+  }
+
   if (
     !normalized.includes("monospace") &&
     !normalized.includes("typography") &&
-    !normalized.includes("typewriter")
+    !normalized.includes("typewriter") &&
+    !normalized.includes("editorial")
   ) {
     return null;
   }
@@ -1240,6 +1365,21 @@ function drawMonoText(
   context.fillText(text, x, y);
 }
 
+function setMonoFont(
+  context: CanvasRenderingContext2D,
+  weight: number,
+  size: number,
+) {
+  context.font = `${weight} ${size}px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace`;
+}
+
+function getWidestLineWidth(
+  context: CanvasRenderingContext2D,
+  lines: string[],
+) {
+  return Math.max(...lines.map((line) => context.measureText(line).width));
+}
+
 function fitMonoFontSize(
   context: CanvasRenderingContext2D,
   lines: string[],
@@ -1251,22 +1391,128 @@ function fitMonoFontSize(
   let size = startSize;
 
   while (size > minSize) {
-    context.font = `${weight} ${size}px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace`;
-    const widest = Math.max(...lines.map((line) => context.measureText(line).width));
-    if (widest <= maxWidth) return size;
+    setMonoFont(context, weight, size);
+    if (getWidestLineWidth(context, lines) <= maxWidth) return size;
     size -= 2;
   }
 
-  return minSize;
+  setMonoFont(context, weight, minSize);
+  return getWidestLineWidth(context, lines) <= maxWidth ? minSize : null;
 }
 
-function renderLinkedInTypeLockBanner(prompt: string) {
-  const spec = getLinkedInTypeLockSpec(prompt);
+function wrapMonoTextLines(
+  context: CanvasRenderingContext2D,
+  lines: string[],
+  maxWidth: number,
+  maxLines: number,
+) {
+  const wrappedLines: string[] = [];
+
+  for (const line of lines) {
+    const words = line.split(/\s+/).filter(Boolean);
+    if (!words.length) continue;
+
+    let currentLine = "";
+
+    for (const word of words) {
+      const nextLine = currentLine ? `${currentLine} ${word}` : word;
+      if (context.measureText(nextLine).width <= maxWidth) {
+        currentLine = nextLine;
+        continue;
+      }
+
+      if (!currentLine || context.measureText(word).width > maxWidth) {
+        return null;
+      }
+
+      wrappedLines.push(currentLine);
+      currentLine = word;
+
+      if (wrappedLines.length >= maxLines) return null;
+    }
+
+    if (currentLine) wrappedLines.push(currentLine);
+    if (wrappedLines.length > maxLines) return null;
+  }
+
+  return wrappedLines.length ? wrappedLines : null;
+}
+
+function fitHeadlineText(
+  context: CanvasRenderingContext2D,
+  lines: string[],
+  weight: number,
+  startSize: number,
+  minSize: number,
+  maxWidth: number,
+  maxLines: number,
+) {
+  let size = startSize;
+
+  while (size >= minSize) {
+    setMonoFont(context, weight, size);
+    const wrappedLines = wrapMonoTextLines(context, lines, maxWidth, maxLines);
+
+    if (wrappedLines && getWidestLineWidth(context, wrappedLines) <= maxWidth) {
+      return { fontSize: size, lines: wrappedLines };
+    }
+
+    size -= 2;
+  }
+
+  return null;
+}
+
+function getTypeLockLayout(platform: PlatformId) {
+  if (platform === "x") {
+    return {
+      width: 1500,
+      height: 500,
+      safeRect: { x: 170, y: 60, width: 1120, height: 340 },
+      textX: 620,
+      maxRight: 1270,
+      headlineStartSize: 58,
+      headlineStartSizeDense: 54,
+      headlineMinSize: 34,
+      headlineMaxLines: 5,
+      minFirstY: 104,
+      twoLineFirstY: 170,
+      dividerGap: 20,
+      sublineGap: 42,
+      maxSublineBaseline: 370,
+      creditY: 382,
+      creditMaxLeft: 1120,
+    };
+  }
+
+  return {
+    width: 1584,
+    height: 396,
+    safeRect: { x: 192, y: 34, width: 1200, height: 328 },
+    textX: 760,
+    maxRight: 1352,
+    headlineStartSize: 56,
+    headlineStartSizeDense: 48,
+    headlineMinSize: 36,
+    headlineMaxLines: 5,
+    minFirstY: 86,
+    twoLineFirstY: 148,
+    dividerGap: 18,
+    sublineGap: 38,
+    maxSublineBaseline: 326,
+    creditY: 358,
+    creditMaxLeft: 1138,
+  };
+}
+
+function renderTypeLockBanner(prompt: string, platform: PlatformId) {
+  const spec = getTypeLockSpec(prompt, platform);
   if (!spec) return "";
+  const layout = getTypeLockLayout(platform);
 
   const canvas = document.createElement("canvas");
-  canvas.width = 1584;
-  canvas.height = 396;
+  canvas.width = layout.width;
+  canvas.height = layout.height;
   const context = canvas.getContext("2d");
 
   if (!context) return "";
@@ -1276,37 +1522,66 @@ function renderLinkedInTypeLockBanner(prompt: string) {
   drawSubtleGrid(context, canvas.width, canvas.height);
 
   context.fillStyle = "rgba(0, 0, 0, 0.1)";
-  context.fillRect(192, 34, 1200, 328);
+  context.fillRect(
+    layout.safeRect.x,
+    layout.safeRect.y,
+    layout.safeRect.width,
+    layout.safeRect.height,
+  );
 
   context.textBaseline = "alphabetic";
   context.textAlign = "left";
-  const textX = 760;
-  const maxRight = 1352;
+  const textX = layout.textX;
+  const maxRight = layout.maxRight;
   const maxTextWidth = maxRight - textX;
-  const headlineFontSize = fitMonoFontSize(
+  const fittedHeadline = fitHeadlineText(
     context,
     spec.headlineLines,
     700,
-    spec.headlineLines.length > 2 ? 52 : 56,
-    36,
-    maxTextWidth,
+    spec.headlineLines.length > 2
+      ? layout.headlineStartSizeDense
+      : layout.headlineStartSize,
+    layout.headlineMinSize,
+    maxTextWidth - 8,
+    layout.headlineMaxLines,
   );
-  context.font =
-    `700 ${headlineFontSize}px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace`;
+
+  if (!fittedHeadline) return "";
+
+  const headlineLines = fittedHeadline.lines;
+  const headlineFontSize = fittedHeadline.fontSize;
+  setMonoFont(context, 700, headlineFontSize);
   context.fillStyle = "#f4ecd9";
   context.shadowColor = "rgba(0, 0, 0, 0.24)";
   context.shadowBlur = 0;
   context.shadowOffsetX = 0;
   context.shadowOffsetY = 1;
 
-  const lineHeight = Math.round(headlineFontSize * 1.14);
+  const lineHeight = Math.round(headlineFontSize * 1.12);
   const firstY =
-    spec.headlineLines.length <= 2
-      ? 148
-      : Math.max(94, 200 - ((spec.headlineLines.length - 1) * lineHeight) / 2);
-  const redPeriodLineIndex = spec.headlineLines.length - 1;
+    headlineLines.length <= 2
+      ? layout.twoLineFirstY
+      : Math.max(
+          layout.minFirstY,
+          layout.maxSublineBaseline -
+            (spec.subline ? layout.sublineGap : 0) -
+            layout.dividerGap -
+            headlineLines.length * lineHeight,
+        );
+  const dividerY =
+    firstY + headlineLines.length * lineHeight + layout.dividerGap;
 
-  spec.headlineLines.forEach((line, index) => {
+  if (
+    firstY < 0 ||
+    dividerY + 5 > layout.height ||
+    (spec.subline && dividerY + layout.sublineGap > layout.maxSublineBaseline)
+  ) {
+    return "";
+  }
+
+  const redPeriodLineIndex = headlineLines.length - 1;
+
+  headlineLines.forEach((line, index) => {
     const y = firstY + index * lineHeight;
     const shouldRedrawPeriod = index === redPeriodLineIndex && line.endsWith(".");
     const creamLine = shouldRedrawPeriod ? line.slice(0, -1) : line;
@@ -1322,28 +1597,32 @@ function renderLinkedInTypeLockBanner(prompt: string) {
 
   context.shadowColor = "transparent";
   context.fillStyle = "#b5222e";
-  const dividerY = firstY + spec.headlineLines.length * lineHeight + 18;
   context.fillRect(textX, dividerY, 92, 5);
 
-  const sublineFontSize = fitMonoFontSize(
-    context,
-    [spec.subline],
-    500,
-    28,
-    18,
-    maxTextWidth,
-  );
-  context.font =
-    `500 ${sublineFontSize}px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace`;
-  context.fillStyle = "rgba(244, 236, 217, 0.48)";
-  drawMonoText(context, spec.subline, textX, dividerY + 56);
+  if (spec.subline) {
+    const sublineFontSize = fitMonoFontSize(
+      context,
+      [spec.subline],
+      500,
+      platform === "x" ? 30 : 28,
+      18,
+      maxTextWidth,
+    );
+    if (!sublineFontSize) return "";
 
-  context.font =
-    "500 12px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace";
+    setMonoFont(context, 500, sublineFontSize);
+    context.fillStyle = "rgba(244, 236, 217, 0.48)";
+    drawMonoText(context, spec.subline, textX, dividerY + layout.sublineGap);
+  }
+
+  setMonoFont(context, 500, 12);
   context.fillStyle = "rgba(244, 236, 217, 0.24)";
   const credit = "made with canvakilla.com";
-  const creditX = Math.min(1138, maxRight - context.measureText(credit).width);
-  drawMonoText(context, credit, creditX, 346);
+  const creditX = Math.min(
+    layout.creditMaxLeft,
+    maxRight - context.measureText(credit).width,
+  );
+  drawMonoText(context, credit, creditX, layout.creditY);
 
   return canvas.toDataURL("image/png");
 }
@@ -1503,6 +1782,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
   const profileInputRef = useRef<HTMLInputElement | null>(null);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
   const [references, setReferences] = useState<ReferenceItem[]>([]);
+  const [selectedReferenceIds, setSelectedReferenceIds] = useState<string[]>([]);
   const [editTarget, setEditTarget] = useState<EditTarget>("banner");
   const [previewMode, setPreviewMode] = useState<PreviewMode>("desktop");
   const [profileImage, setProfileImage] = useState("");
@@ -1529,15 +1809,25 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
   const activeSize =
     editTarget === "profile" ? config.profileSizeLabel : config.bannerSize.label;
   const previewModeLabel = previewMode === "mobile" ? "Mobile" : "Desktop";
-  const runReferences = references.slice(0, MAX_REFERENCE_IMAGES_PER_RUN);
+  const selectedReferences = references.filter((reference) =>
+    selectedReferenceIds.includes(reference.id),
+  );
+  const runReferences = (editTarget === "banner" ? selectedReferences : [])
+    .slice(0, MAX_REFERENCE_IMAGES_PER_RUN);
   const canGenerate = prompt.trim().length > 0 && !isGenerating;
   const canExport = Boolean(activeImage);
   const showFirstRunNudge = !firstRunDone && references.length === 0 && !activeImage;
   const sourceSummary = [
     activeImage ? `Iterating current ${activeTargetName}` : `Creating ${activeTargetName}`,
     runReferences.length
-      ? `using ${runReferences.length} reference${runReferences.length === 1 ? "" : "s"}`
-      : "no references selected",
+      ? `using ${runReferences.length} selected reference${
+          runReferences.length === 1 ? "" : "s"
+        }`
+      : references.length
+        ? `${references.length} saved reference${
+            references.length === 1 ? "" : "s"
+          } parked`
+        : "no references selected",
   ].join(" · ");
 
   const selectedModelLabel = useMemo(() => {
@@ -1580,10 +1870,17 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
       .then((savedState) => {
         if (!isMounted || !savedState) return;
 
+        let restoredReferences: ReferenceItem[] = [];
+        let restoredSelectedReferenceIds: string[] = [];
+
         if (Array.isArray(savedState.references) && savedState.references.length) {
-          setReferences(savedState.references.slice(0, MAX_STORED_REFERENCE_IMAGES));
+          restoredReferences = normalizeReferenceItems(savedState.references).slice(
+            0,
+            MAX_STORED_REFERENCE_IMAGES,
+          );
+          setReferences(restoredReferences);
         } else if (savedState.sourceImage) {
-          setReferences([
+          restoredReferences = [
             {
               id: "legacy-reference",
               image: savedState.sourceImage,
@@ -1591,7 +1888,18 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
               label: "R1",
               createdAt: "Saved",
             },
-          ]);
+          ];
+          setReferences(restoredReferences);
+        }
+
+        if (Array.isArray(savedState.selectedReferenceIds)) {
+          const restoredReferenceIds = new Set(
+            restoredReferences.map((reference) => reference.id),
+          );
+          restoredSelectedReferenceIds = savedState.selectedReferenceIds
+            .filter((id) => restoredReferenceIds.has(id))
+            .slice(0, MAX_REFERENCE_IMAGES_PER_RUN);
+          setSelectedReferenceIds(restoredSelectedReferenceIds);
         }
 
         setProfileImage(savedState.profileImage || "");
@@ -1610,7 +1918,16 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
             : restoredTarget === "banner" && config.profilePrompts.includes(restoredPrompt)
               ? config.bannerPrompts[0]
               : restoredPrompt;
-        setPrompt(normalizedPrompt);
+        setPrompt(
+          restoredTarget === "banner"
+            ? syncReferenceInstructions(
+                normalizedPrompt,
+                restoredReferences.filter((reference) =>
+                  restoredSelectedReferenceIds.includes(reference.id),
+                ),
+              )
+            : removeAllReferenceInstructions(normalizedPrompt),
+        );
         setModel(normalizeModelId(savedState.model || MODELS[0].id));
         setEditTarget(restoredTarget);
         setPreviewMode(
@@ -1654,6 +1971,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
         editTarget,
         previewMode,
         references,
+        selectedReferenceIds,
         sourceImage: references[0]?.image || "",
         sourceName: references[0]?.name || "",
         profileImage,
@@ -1679,10 +1997,31 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     prompt,
     previewMode,
     references,
+    selectedReferenceIds,
     templateVisible,
     workspaceKey,
     workspaceLoaded,
   ]);
+
+  useEffect(() => {
+    const referenceIds = new Set(references.map((reference) => reference.id));
+    const nextIds = selectedReferenceIds
+      .filter((id) => referenceIds.has(id))
+      .slice(0, MAX_REFERENCE_IMAGES_PER_RUN);
+
+    if (
+      nextIds.length === selectedReferenceIds.length &&
+      nextIds.every((id, index) => id === selectedReferenceIds[index])
+    ) {
+      return;
+    }
+
+    const nextSelectedReferences = references.filter((reference) =>
+      nextIds.includes(reference.id),
+    );
+    setSelectedReferenceIds(nextIds);
+    setPrompt((value) => syncReferenceInstructions(value, nextSelectedReferences));
+  }, [references, selectedReferenceIds]);
 
   async function handleFiles(files: FileList | null) {
     const selectedFiles = Array.from(files || []);
@@ -1744,8 +2083,8 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     setError("");
     setStatus(
       imageFiles.length === 1
-        ? "Reference added"
-        : `${imageFiles.length} references added`,
+        ? "Reference added and parked until clicked"
+        : `${imageFiles.length} references added and parked until clicked`,
     );
   }
 
@@ -1779,9 +2118,12 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
       nextTarget === "profile" ? config.profilePrompts : config.bannerPrompts;
 
     setEditTarget(nextTarget);
-    setPrompt((value) =>
-      currentStarters.includes(value) ? nextStarters[0] : value,
-    );
+    setPrompt((value) => {
+      const nextPrompt = currentStarters.includes(value) ? nextStarters[0] : value;
+      return nextTarget === "profile"
+        ? removeAllReferenceInstructions(nextPrompt)
+        : syncReferenceInstructions(nextPrompt, selectedReferences);
+    });
     captureClientEvent("edit_target_switched", { target: nextTarget, platform });
     setStatus(
       nextTarget === "profile"
@@ -1795,40 +2137,107 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     handleFiles(event.dataTransfer.files);
   }
 
-  function insertReferenceInstruction(reference: ReferenceItem) {
-    const instruction = `Use Reference ${reference.label} (${reference.name}) as a visual reference.`;
-    const textarea = promptRef.current;
-    const currentPrompt = prompt;
-
-    if (!textarea) {
-      setPrompt((value) => `${value.trim()}\n\n${instruction}`.trim());
+  function handleReferenceClick(reference: ReferenceItem) {
+    if (editTarget === "profile") {
+      setProfileImage(reference.image);
+      setProfileName(reference.name);
+      setProfileHistory([]);
+      setError("");
+      setStatus(`${reference.label} loaded as the profile edit source`);
+      captureClientEvent("reference_loaded_as_profile_source", {
+        reference_label: reference.label,
+        platform,
+      });
       return;
     }
 
-    const start = textarea.selectionStart ?? currentPrompt.length;
-    const end = textarea.selectionEnd ?? currentPrompt.length;
-    const prefix = currentPrompt.slice(0, start);
-    const suffix = currentPrompt.slice(end);
-    const spacerBefore = prefix && !prefix.endsWith("\n") ? "\n\n" : "";
-    const spacerAfter = suffix && !suffix.startsWith("\n") ? "\n\n" : "";
-    const nextPrompt = `${prefix}${spacerBefore}${instruction}${spacerAfter}${suffix}`;
+    const isSelected = selectedReferenceIds.includes(reference.id);
+    const nextSelectedIds = isSelected
+      ? selectedReferenceIds.filter((id) => id !== reference.id)
+      : [reference.id, ...selectedReferenceIds.filter((id) => id !== reference.id)]
+          .slice(0, MAX_REFERENCE_IMAGES_PER_RUN);
+    const nextSelectedReferences = references.filter((item) =>
+      nextSelectedIds.includes(item.id),
+    );
+    setSelectedReferenceIds(nextSelectedIds);
+    setPrompt((value) => syncReferenceInstructions(value, nextSelectedReferences));
 
-    setPrompt(nextPrompt);
-    window.requestAnimationFrame(() => {
-      const cursor = prefix.length + spacerBefore.length + instruction.length;
-      textarea.focus();
-      textarea.setSelectionRange(cursor, cursor);
+    if (isSelected) {
+      setStatus(`${reference.label} parked again`);
+      captureClientEvent("reference_deselected_for_generation", {
+        reference_label: reference.label,
+        target: editTarget,
+        platform,
+      });
+      return;
+    }
+
+    captureClientEvent("reference_selected_for_generation", {
+      reference_label: reference.label,
+      target: editTarget,
+      platform,
     });
+    setStatus(`${reference.label} selected for the next banner run`);
   }
 
   async function generateImage() {
     if (!canGenerate) return;
+
+    const promptTargetHint = getPromptTargetHint(prompt);
+    if (promptTargetHint && promptTargetHint !== editTarget) {
+      const hintedTargetName =
+        promptTargetHint === "profile" ? config.profileLabel : config.bannerLabel;
+      setError(
+        `This prompt looks like a ${hintedTargetName}. Switch to ${
+          promptTargetHint === "profile" ? "Profile" : "Banner"
+        } mode first.`,
+      );
+      setStatus("Wrong edit mode");
+      return;
+    }
 
     setIsGenerating(true);
     setError("");
     setStatus(`${selectedModelLabel} is composing · ${sourceSummary}`);
 
     try {
+      const canRenderLocalTypeLock =
+        editTarget === "banner" && !currentImage && runReferences.length === 0;
+      const lockedImage = canRenderLocalTypeLock
+        ? renderTypeLockBanner(prompt, platform)
+        : "";
+      if (lockedImage) {
+        const nextItem: HistoryItem = {
+          id: crypto.randomUUID(),
+          image: lockedImage,
+          prompt: prompt.trim(),
+          model: "canvakilla-type-lock",
+          createdAt: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        };
+
+        setCurrentImage(lockedImage);
+        setHistory((items) => [nextItem, ...items].slice(0, 8));
+        captureClientEvent("image_generated", {
+          model: "canvakilla-type-lock",
+          target: editTarget,
+          platform,
+          has_current_image: !!currentImage,
+          reference_count: 0,
+          prompt_renderer_used: true,
+        });
+        markFirstRunDone();
+        console.info("CanvaKilla rendered a typography-safe banner locally", {
+          platform,
+          target: editTarget,
+          promptPreview: prompt.trim().replace(/\s+/g, " ").slice(0, 120),
+        });
+        setStatus("Typography-safe banner rendered from the prompt");
+        return;
+      }
+
       const formData = new FormData();
       formData.append("prompt", prompt.trim());
       formData.append("model", model);
@@ -1911,17 +2320,6 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
         payload.imageBase64
       }`;
 
-      if (
-        platform === "linkedin" &&
-        editTarget === "banner" &&
-        getLinkedInTypeLockSpec(prompt)
-      ) {
-        const lockedImage = renderLinkedInTypeLockBanner(prompt);
-        if (lockedImage) {
-          nextImage = lockedImage;
-        }
-      }
-
       const nextItem: HistoryItem = {
         id: crypto.randomUUID(),
         image: nextImage,
@@ -1948,6 +2346,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
         platform,
         has_current_image: editTarget === "banner" ? !!currentImage : !!profileImage,
         reference_count: runReferences.length,
+        prompt_renderer_used: false,
       });
       markFirstRunDone();
 
@@ -2120,7 +2519,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     });
     setCurrentImage("");
     setError("");
-    setStatus("Banner moved to references");
+    setStatus("Banner moved to references and parked until clicked");
     captureClientEvent("current_image_moved_to_references", {
       target: "banner",
       platform,
@@ -2135,6 +2534,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     if (!confirmed) return;
 
     setReferences([]);
+    setSelectedReferenceIds([]);
     setProfileImage("");
     setProfileName("");
     setCurrentImage("");
@@ -2186,7 +2586,8 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
           </nav>
 
           <div className="brand-bar">
-            <div>
+            <div className="brand-title">
+              <img src="/logo.svg" alt="" aria-hidden="true" />
               <p className="eyebrow">{config.brandEyebrow}</p>
               <h1>{config.appName}</h1>
             </div>
@@ -2247,25 +2648,59 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
 
           {references.length > 0 && (
             <div className="reference-stack" aria-label="Uploaded references">
-              {references.map((reference) => (
-                <button
-                  className="reference-card"
-                  key={reference.id}
-                  type="button"
-                  onClick={() => insertReferenceInstruction(reference)}
-                  title={`Insert ${reference.label} into the prompt`}
-                >
-                  <img src={reference.image} alt="" />
-                  <span>
-                    <strong>{reference.label}</strong>
-                    <small>{reference.name}</small>
-                  </span>
-                </button>
-              ))}
+              {references.map((reference) => {
+                const isSelected = selectedReferenceIds.includes(reference.id);
+                const isProfileSource =
+                  editTarget === "profile" && profileImage === reference.image;
+                return (
+                  <button
+                    className={`reference-card${
+                      (editTarget === "banner" && isSelected) || isProfileSource
+                        ? " is-selected"
+                        : ""
+                    }`}
+                    key={reference.id}
+                    type="button"
+                    aria-pressed={
+                      editTarget === "banner" ? isSelected : undefined
+                    }
+                    onClick={() => handleReferenceClick(reference)}
+                    title={
+                      editTarget === "profile"
+                        ? `Load ${reference.label} as the profile edit source`
+                        : isSelected
+                          ? `Remove ${reference.label} from the next banner prompt`
+                          : `Use ${reference.label} in the next banner prompt`
+                    }
+                  >
+                    <img src={reference.image} alt="" />
+                    <span>
+                      <strong>{reference.label}</strong>
+                      <small>{reference.name}</small>
+                      <em>
+                        {editTarget === "profile"
+                          ? isProfileSource
+                            ? "Profile source"
+                            : "Click to edit as profile"
+                          : isSelected
+                            ? "Selected for next run"
+                            : "Parked until clicked"}
+                      </em>
+                      {((editTarget === "banner" && isSelected) ||
+                        isProfileSource) && (
+                        <b>
+                          <BadgeCheck size={12} aria-hidden="true" />
+                          {isProfileSource ? "Profile source" : "Using"}
+                        </b>
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
               {references.length > MAX_REFERENCE_IMAGES_PER_RUN && (
                 <p className="reference-limit">
-                  Latest {MAX_REFERENCE_IMAGES_PER_RUN} references are sent per
-                  run.
+                  Up to {MAX_REFERENCE_IMAGES_PER_RUN} clicked references can be
+                  sent per run.
                 </p>
               )}
             </div>
@@ -2352,7 +2787,10 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                 {activeImage
                   ? `Current ${activeTargetName} is always iterated.`
                   : `No current ${activeTargetName} yet.`}{" "}
-                Click a reference to call it out in the prompt. {sourceSummary}.
+                {editTarget === "profile"
+                  ? "Click a reference to load it as the profile edit source."
+                  : "Click a reference to call it out in the prompt."}{" "}
+                {sourceSummary}.
               </small>
             </label>
 
@@ -2362,7 +2800,11 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                   key={starter}
                   type="button"
                   onClick={() => {
-                    setPrompt(starter);
+                    setPrompt(
+                      editTarget === "banner"
+                        ? syncReferenceInstructions(starter, runReferences)
+                        : starter,
+                    );
                     captureClientEvent("prompt_starter_clicked", {
                       starter_index: index,
                       target: editTarget,

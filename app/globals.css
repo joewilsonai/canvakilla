@@ -77,6 +77,12 @@ button:disabled {
   gap: 18px;
 }
 
+.home-brand-logo {
+  width: min(360px, 76vw);
+  height: auto;
+  margin-bottom: 4px;
+}
+
 .platform-picker h1 {
   margin: 0;
   color: var(--text);
@@ -186,6 +192,17 @@ button:disabled {
 
 .brand-bar {
   padding-bottom: 6px;
+}
+
+.brand-title {
+  min-width: 0;
+}
+
+.brand-title img {
+  display: block;
+  width: 132px;
+  height: auto;
+  margin: 0 0 8px;
 }
 
 .platform-tabs {
@@ -335,7 +352,9 @@ button:disabled {
 .profile-upload strong,
 .profile-upload small,
 .reference-card strong,
-.reference-card small {
+.reference-card small,
+.reference-card em,
+.reference-card b {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -344,7 +363,8 @@ button:disabled {
 
 .upload-zone small,
 .profile-upload small,
-.reference-card small {
+.reference-card small,
+.reference-card em {
   margin-top: 2px;
   color: var(--muted);
   font-size: 12px;
@@ -379,10 +399,31 @@ button:disabled {
   text-align: left;
 }
 
+.reference-card.is-selected {
+  border-color: var(--primary);
+  background: rgba(29, 155, 240, 0.12);
+}
+
 .reference-card:hover,
 .upload-zone:hover,
 .profile-upload:hover {
   background: rgba(239, 243, 244, 0.04);
+}
+
+.upload-zone:focus-within,
+.profile-upload:focus-within {
+  border-color: var(--blue);
+  background:
+    linear-gradient(rgba(29, 155, 240, 0.12), rgba(29, 155, 240, 0.12)),
+    var(--surface);
+  box-shadow:
+    0 0 0 1px rgba(29, 155, 240, 0.62),
+    0 0 0 6px rgba(29, 155, 240, 0.16);
+}
+
+.upload-zone:focus-within .upload-icon,
+.profile-upload:focus-within .profile-thumb {
+  box-shadow: 0 0 0 3px rgba(239, 243, 244, 0.22);
 }
 
 .reference-card img {
@@ -397,6 +438,28 @@ button:disabled {
 .reference-card strong {
   color: var(--text);
   font-size: 13px;
+  font-weight: 900;
+}
+
+.reference-card em {
+  color: var(--primary);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.reference-card b {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  padding: 2px 7px;
+  border: 1px solid rgba(29, 155, 240, 0.55);
+  border-radius: 999px;
+  background: rgba(29, 155, 240, 0.16);
+  color: var(--primary);
+  font-size: 11px;
   font-weight: 900;
 }
 
@@ -2403,7 +2466,10 @@ button:focus-visible,
   height: min(900px, calc(100vh - 128px));
   aspect-ratio: 944 / 2048;
   min-height: 640px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   border: 1px solid var(--line);
   border-radius: 26px;
   background: var(--surface);
@@ -2412,9 +2478,23 @@ button:focus-visible,
     0 28px 90px rgba(0, 0, 0, 0.66);
 }
 
+.x-phone-preview::-webkit-scrollbar {
+  width: 10px;
+}
+
+.x-phone-preview::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.x-phone-preview::-webkit-scrollbar-thumb {
+  border: 3px solid var(--surface);
+  border-radius: 999px;
+  background: rgba(113, 118, 123, 0.72);
+}
+
 .x-phone-status,
 .x-phone-nav {
-  position: absolute;
+  position: sticky;
   right: 0;
   left: 0;
   z-index: 10;
@@ -2426,7 +2506,10 @@ button:focus-visible,
   display: flex;
   justify-content: space-between;
   align-items: center;
+  min-height: 48px;
   padding: 18px 40px 0 34px;
+  margin-bottom: -48px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.62), transparent);
   color: white;
   font-size: 14px;
 }
@@ -2531,11 +2614,14 @@ button:focus-visible,
 }
 
 .x-phone-nav {
-  top: 67px;
+  top: 48px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 57px;
   padding: 0 22px;
+  margin-bottom: -57px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.18), transparent);
 }
 
 .x-phone-nav button,
@@ -2732,23 +2818,25 @@ button:focus-visible,
 }
 
 .x-mobile-compose {
-  position: absolute;
-  right: 24px;
+  position: sticky;
+  z-index: 11;
   bottom: 90px;
   display: grid;
   width: 66px;
   aspect-ratio: 1;
   place-items: center;
+  margin: -84px 24px 18px auto;
   border-radius: 50%;
   background: #1d9bf0;
   color: white;
 }
 
 .x-mobile-tabbar {
-  position: absolute;
+  position: sticky;
   right: 0;
   bottom: 0;
   left: 0;
+  z-index: 10;
   display: flex;
   justify-content: space-around;
   padding: 18px 20px 22px;
