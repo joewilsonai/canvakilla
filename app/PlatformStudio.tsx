@@ -82,6 +82,7 @@ type PersistedWorkspace = {
   editTarget?: EditTarget;
   previewMode?: PreviewMode;
   references?: ReferenceItem[];
+  selectedReferenceIds?: string[];
   sourceImage: string;
   sourceName: string;
   profileImage: string;
@@ -972,37 +973,26 @@ function normalizeReferenceItems(references: ReferenceItem[]) {
   }));
 }
 
-function getPromptReferenceLabels(prompt: string) {
-  const labels = new Set<string>();
-
-  for (const match of prompt.matchAll(/\bR(\d{1,3})\b/gi)) {
-    labels.add(`R${Number(match[1])}`);
-  }
-
-  return labels;
-}
-
 function getReferenceInstruction(reference: ReferenceItem) {
   return `Use Reference ${reference.label} (${reference.name}) as a visual reference.`;
 }
 
-function removeReferenceInstruction(prompt: string, reference: ReferenceItem) {
-  const escapedLabel = reference.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const escapedName = reference.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const exactLine = new RegExp(
-    `\\n{0,2}Use Reference ${escapedLabel} \\(${escapedName}\\) as a visual reference\\.\\n{0,2}`,
-    "g",
-  );
-  const genericLine = new RegExp(
-    `\\n{0,2}Use Reference ${escapedLabel} \\([^\\n]+\\) as a visual reference\\.\\n{0,2}`,
-    "g",
-  );
+const REFERENCE_INSTRUCTION_LINE =
+  /^\s*Use Reference R\d{1,3} \([^\n]+\) as a visual reference\.\s*$/gim;
 
+function removeAllReferenceInstructions(prompt: string) {
   return prompt
-    .replace(exactLine, "\n\n")
-    .replace(genericLine, "\n\n")
+    .replace(REFERENCE_INSTRUCTION_LINE, "")
+    .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function syncReferenceInstructions(prompt: string, selectedReferences: ReferenceItem[]) {
+  const basePrompt = removeAllReferenceInstructions(prompt);
+  const instructions = selectedReferences.map(getReferenceInstruction);
+
+  return [basePrompt, ...instructions].filter(Boolean).join("\n\n").trim();
 }
 
 function getDataUrlBytes(dataUrl: string) {
@@ -1167,26 +1157,30 @@ type TypeLockSpec = {
 
 function getPromptTargetHint(prompt: string): EditTarget | null {
   const normalized = prompt.toLowerCase();
+  let bannerScore = 0;
+  let profileScore = 0;
 
-  if (
-    /\b(banner|cover|header)\b/.test(normalized) ||
-    normalized.includes("1584x396") ||
-    normalized.includes("1500x500") ||
-    normalized.includes("wide editorial")
-  ) {
-    return "banner";
+  bannerScore += (normalized.match(/\b(banner|cover|header)\b/g) || []).length * 2;
+  profileScore +=
+    (normalized.match(/\b(profile picture|profile photo|headshot|avatar)\b/g) || [])
+      .length * 3;
+
+  if (normalized.includes("1584x396") || normalized.includes("1500x500")) {
+    bannerScore += 3;
+  }
+  if (normalized.includes("wide editorial")) bannerScore += 2;
+  if (normalized.includes("circular crop") || normalized.includes("square format")) {
+    profileScore += 2;
+  }
+  if (/\b(make|create|turn|convert|generate)\b[^.?!\n]*(banner|cover|header)\b/.test(normalized)) {
+    bannerScore += 4;
+  }
+  if (/\b(make|create|turn|convert|generate)\b[^.?!\n]*(profile picture|profile photo|headshot|avatar)\b/.test(normalized)) {
+    profileScore += 4;
   }
 
-  if (
-    normalized.includes("profile picture") ||
-    normalized.includes("profile photo") ||
-    normalized.includes("headshot") ||
-    normalized.includes("avatar") ||
-    normalized.includes("circular crop") ||
-    normalized.includes("square format")
-  ) {
-    return "profile";
-  }
+  if (bannerScore >= profileScore + 2) return "banner";
+  if (profileScore >= bannerScore + 2) return "profile";
 
   return null;
 }
@@ -1371,6 +1365,21 @@ function drawMonoText(
   context.fillText(text, x, y);
 }
 
+function setMonoFont(
+  context: CanvasRenderingContext2D,
+  weight: number,
+  size: number,
+) {
+  context.font = `${weight} ${size}px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace`;
+}
+
+function getWidestLineWidth(
+  context: CanvasRenderingContext2D,
+  lines: string[],
+) {
+  return Math.max(...lines.map((line) => context.measureText(line).width));
+}
+
 function fitMonoFontSize(
   context: CanvasRenderingContext2D,
   lines: string[],
@@ -1382,13 +1391,76 @@ function fitMonoFontSize(
   let size = startSize;
 
   while (size > minSize) {
-    context.font = `${weight} ${size}px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace`;
-    const widest = Math.max(...lines.map((line) => context.measureText(line).width));
-    if (widest <= maxWidth) return size;
+    setMonoFont(context, weight, size);
+    if (getWidestLineWidth(context, lines) <= maxWidth) return size;
     size -= 2;
   }
 
-  return minSize;
+  setMonoFont(context, weight, minSize);
+  return getWidestLineWidth(context, lines) <= maxWidth ? minSize : null;
+}
+
+function wrapMonoTextLines(
+  context: CanvasRenderingContext2D,
+  lines: string[],
+  maxWidth: number,
+  maxLines: number,
+) {
+  const wrappedLines: string[] = [];
+
+  for (const line of lines) {
+    const words = line.split(/\s+/).filter(Boolean);
+    if (!words.length) continue;
+
+    let currentLine = "";
+
+    for (const word of words) {
+      const nextLine = currentLine ? `${currentLine} ${word}` : word;
+      if (context.measureText(nextLine).width <= maxWidth) {
+        currentLine = nextLine;
+        continue;
+      }
+
+      if (!currentLine || context.measureText(word).width > maxWidth) {
+        return null;
+      }
+
+      wrappedLines.push(currentLine);
+      currentLine = word;
+
+      if (wrappedLines.length >= maxLines) return null;
+    }
+
+    if (currentLine) wrappedLines.push(currentLine);
+    if (wrappedLines.length > maxLines) return null;
+  }
+
+  return wrappedLines.length ? wrappedLines : null;
+}
+
+function fitHeadlineText(
+  context: CanvasRenderingContext2D,
+  lines: string[],
+  weight: number,
+  startSize: number,
+  minSize: number,
+  maxWidth: number,
+  maxLines: number,
+) {
+  let size = startSize;
+
+  while (size >= minSize) {
+    setMonoFont(context, weight, size);
+    const wrappedLines = wrapMonoTextLines(context, lines, maxWidth, maxLines);
+
+    if (wrappedLines && getWidestLineWidth(context, wrappedLines) <= maxWidth) {
+      return { fontSize: size, lines: wrappedLines };
+    }
+
+    size -= 2;
+  }
+
+  return null;
 }
 
 function getTypeLockLayout(platform: PlatformId) {
@@ -1402,6 +1474,7 @@ function getTypeLockLayout(platform: PlatformId) {
       headlineStartSize: 58,
       headlineStartSizeDense: 54,
       headlineMinSize: 34,
+      headlineMaxLines: 5,
       minFirstY: 104,
       twoLineFirstY: 170,
       dividerGap: 20,
@@ -1421,6 +1494,7 @@ function getTypeLockLayout(platform: PlatformId) {
     headlineStartSize: 56,
     headlineStartSizeDense: 48,
     headlineMinSize: 36,
+    headlineMaxLines: 5,
     minFirstY: 86,
     twoLineFirstY: 148,
     dividerGap: 18,
@@ -1460,7 +1534,7 @@ function renderTypeLockBanner(prompt: string, platform: PlatformId) {
   const textX = layout.textX;
   const maxRight = layout.maxRight;
   const maxTextWidth = maxRight - textX;
-  const headlineFontSize = fitMonoFontSize(
+  const fittedHeadline = fitHeadlineText(
     context,
     spec.headlineLines,
     700,
@@ -1468,10 +1542,15 @@ function renderTypeLockBanner(prompt: string, platform: PlatformId) {
       ? layout.headlineStartSizeDense
       : layout.headlineStartSize,
     layout.headlineMinSize,
-    maxTextWidth,
+    maxTextWidth - 8,
+    layout.headlineMaxLines,
   );
-  context.font =
-    `700 ${headlineFontSize}px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace`;
+
+  if (!fittedHeadline) return "";
+
+  const headlineLines = fittedHeadline.lines;
+  const headlineFontSize = fittedHeadline.fontSize;
+  setMonoFont(context, 700, headlineFontSize);
   context.fillStyle = "#f4ecd9";
   context.shadowColor = "rgba(0, 0, 0, 0.24)";
   context.shadowBlur = 0;
@@ -1480,18 +1559,29 @@ function renderTypeLockBanner(prompt: string, platform: PlatformId) {
 
   const lineHeight = Math.round(headlineFontSize * 1.12);
   const firstY =
-    spec.headlineLines.length <= 2
+    headlineLines.length <= 2
       ? layout.twoLineFirstY
       : Math.max(
           layout.minFirstY,
           layout.maxSublineBaseline -
             (spec.subline ? layout.sublineGap : 0) -
             layout.dividerGap -
-            spec.headlineLines.length * lineHeight,
+            headlineLines.length * lineHeight,
         );
-  const redPeriodLineIndex = spec.headlineLines.length - 1;
+  const dividerY =
+    firstY + headlineLines.length * lineHeight + layout.dividerGap;
 
-  spec.headlineLines.forEach((line, index) => {
+  if (
+    firstY < 0 ||
+    dividerY + 5 > layout.height ||
+    (spec.subline && dividerY + layout.sublineGap > layout.maxSublineBaseline)
+  ) {
+    return "";
+  }
+
+  const redPeriodLineIndex = headlineLines.length - 1;
+
+  headlineLines.forEach((line, index) => {
     const y = firstY + index * lineHeight;
     const shouldRedrawPeriod = index === redPeriodLineIndex && line.endsWith(".");
     const creamLine = shouldRedrawPeriod ? line.slice(0, -1) : line;
@@ -1507,8 +1597,6 @@ function renderTypeLockBanner(prompt: string, platform: PlatformId) {
 
   context.shadowColor = "transparent";
   context.fillStyle = "#b5222e";
-  const dividerY =
-    firstY + spec.headlineLines.length * lineHeight + layout.dividerGap;
   context.fillRect(textX, dividerY, 92, 5);
 
   if (spec.subline) {
@@ -1520,14 +1608,14 @@ function renderTypeLockBanner(prompt: string, platform: PlatformId) {
       18,
       maxTextWidth,
     );
-    context.font =
-      `500 ${sublineFontSize}px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace`;
+    if (!sublineFontSize) return "";
+
+    setMonoFont(context, 500, sublineFontSize);
     context.fillStyle = "rgba(244, 236, 217, 0.48)";
     drawMonoText(context, spec.subline, textX, dividerY + layout.sublineGap);
   }
 
-  context.font =
-    "500 12px 'IBM Plex Mono', 'SFMono-Regular', 'Roboto Mono', Consolas, monospace";
+  setMonoFont(context, 500, 12);
   context.fillStyle = "rgba(244, 236, 217, 0.24)";
   const credit = "made with canvakilla.com";
   const creditX = Math.min(
@@ -1694,6 +1782,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
   const profileInputRef = useRef<HTMLInputElement | null>(null);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
   const [references, setReferences] = useState<ReferenceItem[]>([]);
+  const [selectedReferenceIds, setSelectedReferenceIds] = useState<string[]>([]);
   const [editTarget, setEditTarget] = useState<EditTarget>("banner");
   const [previewMode, setPreviewMode] = useState<PreviewMode>("desktop");
   const [profileImage, setProfileImage] = useState("");
@@ -1720,9 +1809,10 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
   const activeSize =
     editTarget === "profile" ? config.profileSizeLabel : config.bannerSize.label;
   const previewModeLabel = previewMode === "mobile" ? "Mobile" : "Desktop";
-  const promptReferenceLabels = getPromptReferenceLabels(prompt);
-  const runReferences = references
-    .filter((reference) => promptReferenceLabels.has(reference.label))
+  const selectedReferences = references.filter((reference) =>
+    selectedReferenceIds.includes(reference.id),
+  );
+  const runReferences = (editTarget === "banner" ? selectedReferences : [])
     .slice(0, MAX_REFERENCE_IMAGES_PER_RUN);
   const canGenerate = prompt.trim().length > 0 && !isGenerating;
   const canExport = Boolean(activeImage);
@@ -1780,15 +1870,17 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
       .then((savedState) => {
         if (!isMounted || !savedState) return;
 
+        let restoredReferences: ReferenceItem[] = [];
+        let restoredSelectedReferenceIds: string[] = [];
+
         if (Array.isArray(savedState.references) && savedState.references.length) {
-          setReferences(
-            normalizeReferenceItems(savedState.references).slice(
-              0,
-              MAX_STORED_REFERENCE_IMAGES,
-            ),
+          restoredReferences = normalizeReferenceItems(savedState.references).slice(
+            0,
+            MAX_STORED_REFERENCE_IMAGES,
           );
+          setReferences(restoredReferences);
         } else if (savedState.sourceImage) {
-          setReferences([
+          restoredReferences = [
             {
               id: "legacy-reference",
               image: savedState.sourceImage,
@@ -1796,7 +1888,18 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
               label: "R1",
               createdAt: "Saved",
             },
-          ]);
+          ];
+          setReferences(restoredReferences);
+        }
+
+        if (Array.isArray(savedState.selectedReferenceIds)) {
+          const restoredReferenceIds = new Set(
+            restoredReferences.map((reference) => reference.id),
+          );
+          restoredSelectedReferenceIds = savedState.selectedReferenceIds
+            .filter((id) => restoredReferenceIds.has(id))
+            .slice(0, MAX_REFERENCE_IMAGES_PER_RUN);
+          setSelectedReferenceIds(restoredSelectedReferenceIds);
         }
 
         setProfileImage(savedState.profileImage || "");
@@ -1815,7 +1918,16 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
             : restoredTarget === "banner" && config.profilePrompts.includes(restoredPrompt)
               ? config.bannerPrompts[0]
               : restoredPrompt;
-        setPrompt(normalizedPrompt);
+        setPrompt(
+          restoredTarget === "banner"
+            ? syncReferenceInstructions(
+                normalizedPrompt,
+                restoredReferences.filter((reference) =>
+                  restoredSelectedReferenceIds.includes(reference.id),
+                ),
+              )
+            : removeAllReferenceInstructions(normalizedPrompt),
+        );
         setModel(normalizeModelId(savedState.model || MODELS[0].id));
         setEditTarget(restoredTarget);
         setPreviewMode(
@@ -1859,6 +1971,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
         editTarget,
         previewMode,
         references,
+        selectedReferenceIds,
         sourceImage: references[0]?.image || "",
         sourceName: references[0]?.name || "",
         profileImage,
@@ -1884,10 +1997,31 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     prompt,
     previewMode,
     references,
+    selectedReferenceIds,
     templateVisible,
     workspaceKey,
     workspaceLoaded,
   ]);
+
+  useEffect(() => {
+    const referenceIds = new Set(references.map((reference) => reference.id));
+    const nextIds = selectedReferenceIds
+      .filter((id) => referenceIds.has(id))
+      .slice(0, MAX_REFERENCE_IMAGES_PER_RUN);
+
+    if (
+      nextIds.length === selectedReferenceIds.length &&
+      nextIds.every((id, index) => id === selectedReferenceIds[index])
+    ) {
+      return;
+    }
+
+    const nextSelectedReferences = references.filter((reference) =>
+      nextIds.includes(reference.id),
+    );
+    setSelectedReferenceIds(nextIds);
+    setPrompt((value) => syncReferenceInstructions(value, nextSelectedReferences));
+  }, [references, selectedReferenceIds]);
 
   async function handleFiles(files: FileList | null) {
     const selectedFiles = Array.from(files || []);
@@ -1984,9 +2118,12 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
       nextTarget === "profile" ? config.profilePrompts : config.bannerPrompts;
 
     setEditTarget(nextTarget);
-    setPrompt((value) =>
-      currentStarters.includes(value) ? nextStarters[0] : value,
-    );
+    setPrompt((value) => {
+      const nextPrompt = currentStarters.includes(value) ? nextStarters[0] : value;
+      return nextTarget === "profile"
+        ? removeAllReferenceInstructions(nextPrompt)
+        : syncReferenceInstructions(nextPrompt, selectedReferences);
+    });
     captureClientEvent("edit_target_switched", { target: nextTarget, platform });
     setStatus(
       nextTarget === "profile"
@@ -2014,12 +2151,18 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
       return;
     }
 
-    const instruction = getReferenceInstruction(reference);
-    const textarea = promptRef.current;
-    const currentPrompt = prompt;
+    const isSelected = selectedReferenceIds.includes(reference.id);
+    const nextSelectedIds = isSelected
+      ? selectedReferenceIds.filter((id) => id !== reference.id)
+      : [reference.id, ...selectedReferenceIds.filter((id) => id !== reference.id)]
+          .slice(0, MAX_REFERENCE_IMAGES_PER_RUN);
+    const nextSelectedReferences = references.filter((item) =>
+      nextSelectedIds.includes(item.id),
+    );
+    setSelectedReferenceIds(nextSelectedIds);
+    setPrompt((value) => syncReferenceInstructions(value, nextSelectedReferences));
 
-    if (currentPrompt.includes(instruction)) {
-      setPrompt((value) => removeReferenceInstruction(value, reference));
+    if (isSelected) {
       setStatus(`${reference.label} parked again`);
       captureClientEvent("reference_deselected_for_generation", {
         reference_label: reference.label,
@@ -2029,31 +2172,6 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
       return;
     }
 
-    if (!textarea) {
-      setPrompt((value) => `${value.trim()}\n\n${instruction}`.trim());
-      captureClientEvent("reference_selected_for_generation", {
-        reference_label: reference.label,
-        target: editTarget,
-        platform,
-      });
-      setStatus(`${reference.label} selected for the next banner run`);
-      return;
-    }
-
-    const start = textarea.selectionStart ?? currentPrompt.length;
-    const end = textarea.selectionEnd ?? currentPrompt.length;
-    const prefix = currentPrompt.slice(0, start);
-    const suffix = currentPrompt.slice(end);
-    const spacerBefore = prefix && !prefix.endsWith("\n") ? "\n\n" : "";
-    const spacerAfter = suffix && !suffix.startsWith("\n") ? "\n\n" : "";
-    const nextPrompt = `${prefix}${spacerBefore}${instruction}${spacerAfter}${suffix}`;
-
-    setPrompt(nextPrompt);
-    window.requestAnimationFrame(() => {
-      const cursor = prefix.length + spacerBefore.length + instruction.length;
-      textarea.focus();
-      textarea.setSelectionRange(cursor, cursor);
-    });
     captureClientEvent("reference_selected_for_generation", {
       reference_label: reference.label,
       target: editTarget,
@@ -2083,8 +2201,11 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     setStatus(`${selectedModelLabel} is composing · ${sourceSummary}`);
 
     try {
-      const lockedImage =
-        editTarget === "banner" ? renderTypeLockBanner(prompt, platform) : "";
+      const canRenderLocalTypeLock =
+        editTarget === "banner" && !currentImage && runReferences.length === 0;
+      const lockedImage = canRenderLocalTypeLock
+        ? renderTypeLockBanner(prompt, platform)
+        : "";
       if (lockedImage) {
         const nextItem: HistoryItem = {
           id: crypto.randomUUID(),
@@ -2413,6 +2534,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     if (!confirmed) return;
 
     setReferences([]);
+    setSelectedReferenceIds([]);
     setProfileImage("");
     setProfileName("");
     setCurrentImage("");
@@ -2527,17 +2649,21 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
           {references.length > 0 && (
             <div className="reference-stack" aria-label="Uploaded references">
               {references.map((reference) => {
-                const isSelected = promptReferenceLabels.has(reference.label);
+                const isSelected = selectedReferenceIds.includes(reference.id);
                 const isProfileSource =
                   editTarget === "profile" && profileImage === reference.image;
                 return (
                   <button
                     className={`reference-card${
-                      isSelected || isProfileSource ? " is-selected" : ""
+                      (editTarget === "banner" && isSelected) || isProfileSource
+                        ? " is-selected"
+                        : ""
                     }`}
                     key={reference.id}
                     type="button"
-                    aria-pressed={editTarget === "banner" ? isSelected : undefined}
+                    aria-pressed={
+                      editTarget === "banner" ? isSelected : undefined
+                    }
                     onClick={() => handleReferenceClick(reference)}
                     title={
                       editTarget === "profile"
@@ -2560,7 +2686,8 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                             ? "Selected for next run"
                             : "Parked until clicked"}
                       </em>
-                      {(isSelected || isProfileSource) && (
+                      {((editTarget === "banner" && isSelected) ||
+                        isProfileSource) && (
                         <b>
                           <BadgeCheck size={12} aria-hidden="true" />
                           {isProfileSource ? "Profile source" : "Using"}
@@ -2673,7 +2800,11 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                   key={starter}
                   type="button"
                   onClick={() => {
-                    setPrompt(starter);
+                    setPrompt(
+                      editTarget === "banner"
+                        ? syncReferenceInstructions(starter, runReferences)
+                        : starter,
+                    );
                     captureClientEvent("prompt_starter_clicked", {
                       starter_index: index,
                       target: editTarget,
