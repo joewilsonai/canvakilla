@@ -152,6 +152,28 @@ type LimitCheck = {
   message: string;
 };
 
+type RateLimitOptions = {
+  cost: number;
+  costHourLimit: number;
+  costMinuteLimit: number;
+  minuteLimit: number;
+  hourLimit: number;
+};
+
+type SharedLimiterConfig = {
+  token: string;
+  url: string;
+};
+
+type RedisResult<T = unknown> = {
+  result?: T;
+  error?: string;
+};
+
+type GenerationGuard = LimitCheck & {
+  release: () => Promise<void>;
+};
+
 type OpenRouterFetchResult = {
   response: Response;
   payload: OpenRouterPayload;
@@ -188,6 +210,8 @@ const activeGenerations =
 
 let lastRateCleanupAt = 0;
 let warnedMissingOpenRouterKey = false;
+let warnedMissingSharedLimiter = false;
+let warnedSharedLimiterFailure = false;
 
 function normalizeModelId(model: string): ModelId {
   if (model in MODEL_CONFIGS) return model as ModelId;
@@ -551,6 +575,196 @@ function getLimit(name: string, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function getLimiterKey(scope: "ip" | "session", value: string) {
+  return `${scope}:${createHmac("sha256", getSigningSecret())
+    .update(`${scope}:${value || "unknown"}`)
+    .digest("base64url")
+    .slice(0, 32)}`;
+}
+
+function getSharedLimiterConfig(): SharedLimiterConfig | null {
+  const url = sanitizeApiKey(
+    process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
+  );
+  const token = sanitizeApiKey(
+    process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
+  );
+
+  if (!url || !token) return null;
+  return { url: url.replace(/\/+$/g, ""), token };
+}
+
+function isSharedLimiterRequired() {
+  const value = (
+    process.env.CANVAKILLA_REQUIRE_SHARED_LIMITER ||
+    process.env.REQUIRE_SHARED_RATE_LIMITER ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+
+  return value === "1" || value === "true" || value === "yes";
+}
+
+function warnMissingSharedLimiter() {
+  if (process.env.NODE_ENV !== "production" || warnedMissingSharedLimiter) return;
+  warnedMissingSharedLimiter = true;
+  console.warn(
+    "Shared rate limiter env vars are missing; falling back to in-memory generation limits.",
+  );
+}
+
+function warnSharedLimiterFailure(error: unknown) {
+  if (warnedSharedLimiterFailure) return;
+  warnedSharedLimiterFailure = true;
+  console.warn("Shared rate limiter failed; falling back to in-memory limits.", {
+    message: error instanceof Error ? error.message : String(error),
+  });
+}
+
+async function runRedisCommand<T = unknown>(
+  config: SharedLimiterConfig,
+  path: "" | "multi-exec",
+  command: unknown,
+) {
+  const response = await fetch(path ? `${config.url}/${path}` : config.url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(command),
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | RedisResult<T>
+    | Array<RedisResult>
+    | null;
+
+  if (!response.ok || !payload || (!Array.isArray(payload) && payload.error)) {
+    const message =
+      !payload || Array.isArray(payload)
+        ? `Redis request failed with ${response.status}`
+        : payload.error || `Redis request failed with ${response.status}`;
+    throw new Error(message);
+  }
+
+  return payload as T;
+}
+
+async function runRedisTransaction(
+  config: SharedLimiterConfig,
+  commands: unknown[][],
+) {
+  const payload = await runRedisCommand<Array<RedisResult>>(
+    config,
+    "multi-exec",
+    commands,
+  );
+  const failed = payload.find((item) => item.error);
+  if (failed?.error) throw new Error(failed.error);
+  return payload;
+}
+
+async function releaseRedisLock(
+  config: SharedLimiterConfig,
+  key: string,
+  token: string,
+) {
+  const script =
+    "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
+  await runRedisCommand(config, "", ["EVAL", script, 1, key, token]);
+}
+
+function getRedisNumber(result: RedisResult | undefined) {
+  const value = result?.result;
+  return typeof value === "number" ? value : Number.parseInt(String(value || 0), 10);
+}
+
+async function checkSharedRateLimit(
+  config: SharedLimiterConfig,
+  clientKey: string,
+  {
+    cost,
+    costHourLimit,
+    costMinuteLimit,
+    minuteLimit,
+    hourLimit,
+  }: RateLimitOptions,
+): Promise<LimitCheck> {
+  const now = Date.now();
+  const minuteWindow = Math.floor(now / 60_000);
+  const hourWindow = Math.floor(now / 3_600_000);
+  const minuteResetSeconds = Math.max(
+    1,
+    Math.ceil(((minuteWindow + 1) * 60_000 - now) / 1000),
+  );
+  const hourResetSeconds = Math.max(
+    1,
+    Math.ceil(((hourWindow + 1) * 3_600_000 - now) / 1000),
+  );
+  const prefix = `canvakilla:rl:${clientKey}`;
+  const minuteCountKey = `${prefix}:mc:${minuteWindow}`;
+  const minuteCostKey = `${prefix}:mk:${minuteWindow}`;
+  const hourCountKey = `${prefix}:hc:${hourWindow}`;
+  const hourCostKey = `${prefix}:hk:${hourWindow}`;
+
+  const results = await runRedisTransaction(config, [
+    ["INCR", minuteCountKey],
+    ["INCRBY", minuteCostKey, cost],
+    ["INCR", hourCountKey],
+    ["INCRBY", hourCostKey, cost],
+    ["EXPIRE", minuteCountKey, 120],
+    ["EXPIRE", minuteCostKey, 120],
+    ["EXPIRE", hourCountKey, 7200],
+    ["EXPIRE", hourCostKey, 7200],
+  ]);
+
+  const minuteCount = getRedisNumber(results[0]);
+  const minuteCost = getRedisNumber(results[1]);
+  const hourCount = getRedisNumber(results[2]);
+  const hourCost = getRedisNumber(results[3]);
+
+  if (minuteCount > minuteLimit) {
+    return {
+      ok: false,
+      resetSeconds: minuteResetSeconds,
+      message: `Too many generations. Try again in about ${minuteResetSeconds} seconds.`,
+    };
+  }
+
+  if (hourCount > hourLimit) {
+    return {
+      ok: false,
+      resetSeconds: hourResetSeconds,
+      message: "Hourly generation limit reached. Try again later.",
+    };
+  }
+
+  if (minuteCost > costMinuteLimit) {
+    return {
+      ok: false,
+      resetSeconds: minuteResetSeconds,
+      message: `This model is temporarily capped. Try again in about ${minuteResetSeconds} seconds or switch to a cheaper model.`,
+    };
+  }
+
+  if (hourCost > costHourLimit) {
+    return {
+      ok: false,
+      resetSeconds: hourResetSeconds,
+      message: "Hourly model budget reached. Try a cheaper model or come back later.",
+    };
+  }
+
+  return {
+    ok: true,
+    resetSeconds: 0,
+    message: "",
+  };
+}
+
 function pruneRateBuckets(now: number) {
   if (now - lastRateCleanupAt < 60_000) return;
   lastRateCleanupAt = now;
@@ -564,19 +778,7 @@ function pruneRateBuckets(now: number) {
 
 function checkRateLimit(
   clientKey: string,
-  {
-    cost,
-    costHourLimit,
-    costMinuteLimit,
-    minuteLimit,
-    hourLimit,
-  }: {
-    cost: number;
-    costHourLimit: number;
-    costMinuteLimit: number;
-    minuteLimit: number;
-    hourLimit: number;
-  },
+  { cost, costHourLimit, costMinuteLimit, minuteLimit, hourLimit }: RateLimitOptions,
 ): LimitCheck {
   const now = Date.now();
   pruneRateBuckets(now);
@@ -659,6 +861,136 @@ function checkRateLimit(
     ok: true,
     resetSeconds: 0,
     message: "",
+  };
+}
+
+async function checkGenerationRateLimit(
+  sharedLimiter: SharedLimiterConfig | null,
+  clientKey: string,
+  options: RateLimitOptions,
+) {
+  if (sharedLimiter) {
+    return checkSharedRateLimit(sharedLimiter, clientKey, options);
+  }
+
+  return checkRateLimit(clientKey, options);
+}
+
+async function acquireSharedGenerationGuard({
+  config,
+  ipKey,
+  maxActiveGenerations,
+  sessionKey,
+}: {
+  config: SharedLimiterConfig;
+  ipKey: string;
+  maxActiveGenerations: number;
+  sessionKey: string;
+}): Promise<GenerationGuard> {
+  const lockToken = randomBytes(12).toString("base64url");
+  const sessionLockKey = `canvakilla:active:${sessionKey}`;
+  const ipLockKey = `canvakilla:active:${ipKey}`;
+  const globalActiveKey = "canvakilla:active:global";
+  let released = false;
+
+  const release = async () => {
+    if (released) return;
+    released = true;
+    await Promise.allSettled([
+      releaseRedisLock(config, sessionLockKey, lockToken),
+      releaseRedisLock(config, ipLockKey, lockToken),
+      runRedisCommand(config, "", ["DECR", globalActiveKey]),
+    ]);
+  };
+
+  const results = await runRedisTransaction(config, [
+    ["SET", sessionLockKey, lockToken, "EX", 120, "NX"],
+    ["SET", ipLockKey, lockToken, "EX", 120, "NX"],
+    ["INCR", globalActiveKey],
+    ["EXPIRE", globalActiveKey, 180],
+  ]);
+
+  const sessionLocked = results[0]?.result === "OK";
+  const ipLocked = results[1]?.result === "OK";
+  const activeCount = getRedisNumber(results[2]);
+
+  if (!sessionLocked || !ipLocked) {
+    await release();
+    return {
+      ok: false,
+      resetSeconds: 30,
+      message: "A generation is already running for this browser or network.",
+      release: async () => {},
+    };
+  }
+
+  if (activeCount > maxActiveGenerations) {
+    await release();
+    return {
+      ok: false,
+      resetSeconds: 60,
+      message: "CanvaKilla is busy. Try again in a minute.",
+      release: async () => {},
+    };
+  }
+
+  return {
+    ok: true,
+    resetSeconds: 0,
+    message: "",
+    release,
+  };
+}
+
+async function acquireGenerationGuard({
+  ipKey,
+  maxActiveGenerations,
+  sessionKey,
+  sharedLimiter,
+}: {
+  ipKey: string;
+  maxActiveGenerations: number;
+  sessionKey: string;
+  sharedLimiter: SharedLimiterConfig | null;
+}): Promise<GenerationGuard> {
+  if (sharedLimiter) {
+    return acquireSharedGenerationGuard({
+      config: sharedLimiter,
+      ipKey,
+      maxActiveGenerations,
+      sessionKey,
+    });
+  }
+
+  if (activeGenerations.size >= maxActiveGenerations) {
+    return {
+      ok: false,
+      resetSeconds: 60,
+      message: "CanvaKilla is busy. Try again in a minute.",
+      release: async () => {},
+    };
+  }
+
+  if (activeGenerations.has(sessionKey) || activeGenerations.has(ipKey)) {
+    return {
+      ok: false,
+      resetSeconds: 30,
+      message: "A generation is already running for this browser or network.",
+      release: async () => {},
+    };
+  }
+
+  activeGenerations.add(sessionKey);
+  activeGenerations.add(ipKey);
+
+  return {
+    ok: true,
+    resetSeconds: 0,
+    message: "",
+    release: async () => {
+      activeGenerations.delete(sessionKey);
+      activeGenerations.delete(ipKey);
+    },
   };
 }
 
@@ -1502,8 +1834,8 @@ export async function POST(request: Request) {
   const platform = normalizePlatformId(String(formData.get("platform") || "x"));
   const model = normalizeModelId(String(formData.get("model") || DEFAULT_MODEL));
   const requestIp = getRequestIp(request);
-  const sessionKey = `session:${session.id}`;
-  const ipKey = `ip:${requestIp}`;
+  const sessionKey = getLimiterKey("session", session.id);
+  const ipKey = getLimiterKey("ip", requestIp);
   const currentImage = formData.get("currentImage");
   const referenceImages = formData
     .getAll("referenceImages")
@@ -1631,29 +1963,8 @@ export async function POST(request: Request) {
     "MAX_ACTIVE_GENERATIONS",
     DEFAULT_MAX_ACTIVE_GENERATIONS,
   );
-
-  if (activeGenerations.size >= maxActiveGenerations) {
-    return withSessionCookie(
-      NextResponse.json(
-        { error: "CanvaKilla is busy. Try again in a minute." },
-        { status: 429, headers: { "Retry-After": "60" } },
-      ),
-      session,
-    );
-  }
-
-  if (activeGenerations.has(sessionKey) || activeGenerations.has(ipKey)) {
-    return withSessionCookie(
-      NextResponse.json(
-        { error: "A generation is already running for this browser or network." },
-        { status: 429, headers: { "Retry-After": "30" } },
-      ),
-      session,
-    );
-  }
-
   const modelCost = getModelCost(model, images.length);
-  const ipRateLimit = checkRateLimit(ipKey, {
+  const ipLimitOptions = {
     cost: modelCost,
     costMinuteLimit: getLimit(
       "GENERATION_IP_COST_LIMIT_PER_MINUTE",
@@ -1665,26 +1976,93 @@ export async function POST(request: Request) {
     ),
     minuteLimit: getLimit("GENERATION_IP_RATE_LIMIT_PER_MINUTE", DEFAULT_IP_MINUTE_LIMIT),
     hourLimit: getLimit("GENERATION_IP_RATE_LIMIT_PER_HOUR", DEFAULT_IP_HOUR_LIMIT),
-  });
+  } satisfies RateLimitOptions;
+  const sessionLimitOptions = {
+    cost: modelCost,
+    costMinuteLimit: getLimit(
+      "GENERATION_COST_LIMIT_PER_MINUTE",
+      DEFAULT_COST_MINUTE_LIMIT,
+    ),
+    costHourLimit: getLimit(
+      "GENERATION_COST_LIMIT_PER_HOUR",
+      DEFAULT_COST_HOUR_LIMIT,
+    ),
+    minuteLimit: getLimit("GENERATION_RATE_LIMIT_PER_MINUTE", DEFAULT_MINUTE_LIMIT),
+    hourLimit: getLimit("GENERATION_RATE_LIMIT_PER_HOUR", DEFAULT_HOUR_LIMIT),
+  } satisfies RateLimitOptions;
+  const sharedLimiter = getSharedLimiterConfig();
+  const sharedLimiterRequired = isSharedLimiterRequired();
 
-  const rateLimit = ipRateLimit.ok
-    ? checkRateLimit(sessionKey, {
-        cost: modelCost,
-        costMinuteLimit: getLimit(
-          "GENERATION_COST_LIMIT_PER_MINUTE",
-          DEFAULT_COST_MINUTE_LIMIT,
+  if (!sharedLimiter) {
+    if (sharedLimiterRequired) {
+      return withSessionCookie(
+        NextResponse.json(
+          { error: "Image generation is temporarily unavailable.", code: "shared_limiter_missing" },
+          { status: 503 },
         ),
-        costHourLimit: getLimit(
-          "GENERATION_COST_LIMIT_PER_HOUR",
-          DEFAULT_COST_HOUR_LIMIT,
+        session,
+      );
+    }
+
+    warnMissingSharedLimiter();
+  }
+
+  let rateLimit: LimitCheck;
+  let generationGuard: GenerationGuard;
+
+  try {
+    const ipRateLimit = await checkGenerationRateLimit(
+      sharedLimiter,
+      ipKey,
+      ipLimitOptions,
+    );
+    rateLimit = ipRateLimit.ok
+      ? await checkGenerationRateLimit(
+          sharedLimiter,
+          sessionKey,
+          sessionLimitOptions,
+        )
+      : ipRateLimit;
+
+    generationGuard = rateLimit.ok
+      ? await acquireGenerationGuard({
+          ipKey,
+          maxActiveGenerations,
+          sessionKey,
+          sharedLimiter,
+        })
+      : {
+          ...rateLimit,
+          release: async () => {},
+        };
+  } catch (error) {
+    if (sharedLimiterRequired) {
+      return withSessionCookie(
+        NextResponse.json(
+          { error: "Image generation is temporarily unavailable.", code: "shared_limiter_failed" },
+          { status: 503 },
         ),
-        minuteLimit: getLimit(
-          "GENERATION_RATE_LIMIT_PER_MINUTE",
-          DEFAULT_MINUTE_LIMIT,
-        ),
-        hourLimit: getLimit("GENERATION_RATE_LIMIT_PER_HOUR", DEFAULT_HOUR_LIMIT),
-      })
-    : ipRateLimit;
+        session,
+      );
+    }
+
+    warnSharedLimiterFailure(error);
+    const ipRateLimit = checkRateLimit(ipKey, ipLimitOptions);
+    rateLimit = ipRateLimit.ok
+      ? checkRateLimit(sessionKey, sessionLimitOptions)
+      : ipRateLimit;
+    generationGuard = rateLimit.ok
+      ? await acquireGenerationGuard({
+          ipKey,
+          maxActiveGenerations,
+          sessionKey,
+          sharedLimiter: null,
+        })
+      : {
+          ...rateLimit,
+          release: async () => {},
+        };
+  }
 
   if (!rateLimit.ok) {
     captureServerEvent({
@@ -1712,8 +2090,20 @@ export async function POST(request: Request) {
     );
   }
 
-  activeGenerations.add(sessionKey);
-  activeGenerations.add(ipKey);
+  if (!generationGuard.ok) {
+    return withSessionCookie(
+      NextResponse.json(
+        { error: generationGuard.message },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(generationGuard.resetSeconds),
+          },
+        },
+      ),
+      session,
+    );
+  }
 
   try {
     const response = await generateWithOpenRouter({
@@ -1727,7 +2117,6 @@ export async function POST(request: Request) {
     });
     return withSessionCookie(response, session);
   } finally {
-    activeGenerations.delete(sessionKey);
-    activeGenerations.delete(ipKey);
+    await generationGuard.release();
   }
 }
