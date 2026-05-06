@@ -246,6 +246,10 @@ function getSafeImageMimeType(contentType: string): ImageMimeType | "" {
     : "";
 }
 
+function getPromptLogPreview(prompt: string) {
+  return prompt.replace(/\s+/g, " ").slice(0, 120);
+}
+
 function buildBannerInstructions({
   hasCurrentImage,
   platform,
@@ -1485,6 +1489,18 @@ export async function POST(request: Request) {
 
   referenceImages.forEach((file, index) => {
     rawImages.push({ file, label: referenceLabels[index] || `R${index + 1}` });
+  });
+
+  console.info("CanvaKilla generation request", {
+    platform,
+    target,
+    model,
+    has_current_image: currentImage instanceof File && currentImage.size > 0,
+    reference_count: referenceImages.length,
+    reference_labels: referenceLabels,
+    prompt_length: prompt.length,
+    prompt_preview: getPromptLogPreview(prompt),
+    content_length: Number.isFinite(contentLength) ? contentLength : null,
   });
 
   const totalImageBytes = rawImages.reduce((total, image) => total + image.file.size, 0);

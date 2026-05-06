@@ -352,7 +352,9 @@ button:disabled {
 .profile-upload strong,
 .profile-upload small,
 .reference-card strong,
-.reference-card small {
+.reference-card small,
+.reference-card em,
+.reference-card b {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -361,7 +363,8 @@ button:disabled {
 
 .upload-zone small,
 .profile-upload small,
-.reference-card small {
+.reference-card small,
+.reference-card em {
   margin-top: 2px;
   color: var(--muted);
   font-size: 12px;
@@ -396,6 +399,11 @@ button:disabled {
   text-align: left;
 }
 
+.reference-card.is-selected {
+  border-color: var(--primary);
+  background: rgba(29, 155, 240, 0.12);
+}
+
 .reference-card:hover,
 .upload-zone:hover,
 .profile-upload:hover {
@@ -414,6 +422,28 @@ button:disabled {
 .reference-card strong {
   color: var(--text);
   font-size: 13px;
+  font-weight: 900;
+}
+
+.reference-card em {
+  color: var(--primary);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.reference-card b {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  padding: 2px 7px;
+  border: 1px solid rgba(29, 155, 240, 0.55);
+  border-radius: 999px;
+  background: rgba(29, 155, 240, 0.16);
+  color: var(--primary);
+  font-size: 11px;
   font-weight: 900;
 }
 
