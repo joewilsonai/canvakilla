@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 360" role="img" aria-labelledby="title desc">
+  <title id="title">canvakilla logo</title>
+  <desc id="desc">A cream banner rectangle interrupted by a red avatar circle, with the canvakilla wordmark in the overlap.</desc>
+  <rect width="960" height="360" fill="#000000"/>
+  
+  <rect x="246" y="75" width="598" height="210" rx="4" fill="#F2EDE3"/>
+  <circle cx="252" cy="222" r="136" fill="#B6212C"/>
+  <rect x="326" y="190" width="500" height="108" rx="54" fill="#000000"/>
+  <circle cx="326" cy="244" r="54" fill="#000000"/>
+  <text x="430" y="265" fill="#FFFFFF" font-family="'IBM Plex Mono','JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="42" font-weight="500" letter-spacing="7">canvakilla</text>
+</svg>

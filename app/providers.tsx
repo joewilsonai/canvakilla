@@ -24,7 +24,7 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
       advanced_disable_flags: true,
       respect_dnt: true,
       before_send: sanitizePostHogCapture,
-      debug: process.env.NODE_ENV === "development",
+      debug: process.env.NEXT_PUBLIC_POSTHOG_DEBUG === "true",
     });
     isPostHogInitialized = true;
   }, []);
