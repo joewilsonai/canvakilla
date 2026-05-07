@@ -42,6 +42,11 @@ import {
 import Link from "next/link";
 import { DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
+  DEFAULT_IMAGE_MODEL_ID,
+  IMAGE_MODEL_OPTIONS,
+  normalizeImageModelId,
+} from "../lib/image-models";
+import {
   PLATFORM_CONFIGS,
   PLATFORM_IDS,
   type CropTipId,
@@ -136,28 +141,6 @@ const ACCEPTED_CLIENT_IMAGE_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
-
-const MODELS = [
-  {
-    id: "google/gemini-3.1-flash-image-preview",
-    label: "Nano Banana 2",
-  },
-  {
-    id: "google/gemini-3-pro-image-preview",
-    label: "Nano Banana Pro",
-  },
-  {
-    id: "google/gemini-2.5-flash-image",
-    label: "Nano Banana",
-  },
-];
-
-const LEGACY_MODEL_IDS: Record<string, string> = {
-  "gpt-image-2": "openai/gpt-5.4-image-2",
-  "gemini-3.1-flash-image-preview": "google/gemini-3.1-flash-image-preview",
-  "gemini-2.5-flash-image": "google/gemini-2.5-flash-image",
-  "gemini-3-pro-image-preview": "google/gemini-3-pro-image-preview",
-};
 
 type RealTweet = {
   name: string;
@@ -893,11 +876,6 @@ function deleteWorkspaceDb() {
   });
 }
 
-function normalizeModelId(modelId: string) {
-  const nextModel = LEGACY_MODEL_IDS[modelId] || modelId;
-  return MODELS.some((item) => item.id === nextModel) ? nextModel : MODELS[0].id;
-}
-
 async function readWorkspaceState(workspaceKey: string) {
   if (typeof indexedDB === "undefined") return null;
 
@@ -1209,9 +1187,8 @@ function cleanExactTextLine(line: string) {
 function extractReadingExactlyBlocks(prompt: string) {
   const blocks: string[][] = [];
   const marker = /reading exactly:/gi;
-  let match: RegExpExecArray | null;
 
-  while ((match = marker.exec(prompt))) {
+  while (marker.exec(prompt)) {
     const lines = prompt.slice(marker.lastIndex).split(/\r?\n/);
     const collected: string[] = [];
 
@@ -1789,7 +1766,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
   const [profileName, setProfileName] = useState("");
   const [currentImage, setCurrentImage] = useState("");
   const [prompt, setPrompt] = useState(config.bannerPrompts[0]);
-  const [model, setModel] = useState(MODELS[0].id);
+  const [model, setModel] = useState(DEFAULT_IMAGE_MODEL_ID);
   const [templateVisible, setTemplateVisible] = useState(true);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [profileHistory, setProfileHistory] = useState<HistoryItem[]>([]);
@@ -1831,7 +1808,9 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
   ].join(" · ");
 
   const selectedModelLabel = useMemo(() => {
-    return MODELS.find((item) => item.id === model)?.label || "Image model";
+    return (
+      IMAGE_MODEL_OPTIONS.find((item) => item.id === model)?.label || "Image model"
+    );
   }, [model]);
 
   function markFirstRunDone() {
@@ -1928,7 +1907,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
               )
             : removeAllReferenceInstructions(normalizedPrompt),
         );
-        setModel(normalizeModelId(savedState.model || MODELS[0].id));
+        setModel(normalizeImageModelId(savedState.model || DEFAULT_IMAGE_MODEL_ID));
         setEditTarget(restoredTarget);
         setPreviewMode(
           savedState.previewMode === "mobile" ? "mobile" : "desktop",
@@ -2539,7 +2518,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     setProfileName("");
     setCurrentImage("");
     setPrompt(config.bannerPrompts[0]);
-    setModel(MODELS[0].id);
+    setModel(DEFAULT_IMAGE_MODEL_ID);
     setTemplateVisible(true);
     setEditTarget("banner");
     setPreviewMode("desktop");
@@ -2759,7 +2738,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                   });
                 }}
               >
-                {MODELS.map((item) => (
+                {IMAGE_MODEL_OPTIONS.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.label}
                   </option>
