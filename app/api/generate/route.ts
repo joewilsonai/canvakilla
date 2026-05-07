@@ -7,6 +7,7 @@ import {
   DEFAULT_IMAGE_MODEL_ID,
   IMAGE_MODEL_CONFIGS,
   getImageModelCost,
+  getImageModelFetchTimeoutMs,
   normalizeImageModelId,
   type ImageModelId,
 } from "../../../lib/image-models";
@@ -32,6 +33,7 @@ import {
 import { captureServerEvent } from "../../../lib/posthog-server";
 
 export const runtime = "nodejs";
+export const maxDuration = 180;
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MAX_REFERENCE_IMAGES_PER_RUN = 12;
@@ -43,7 +45,6 @@ const MAX_PROVIDER_IMAGE_BYTES = 18 * 1024 * 1024;
 const MAX_RESPONSE_IMAGE_BYTES = 2.5 * 1024 * 1024;
 const MAX_PROMPT_CHARS = 3_000;
 const PROVIDER_FETCH_TIMEOUT_MS = 20_000;
-const OPENROUTER_FETCH_TIMEOUT_MS = 70_000;
 const OPENROUTER_MAX_ATTEMPTS = 2;
 const MAX_SOURCE_IMAGE_DIMENSION = 8_192;
 const MAX_SOURCE_IMAGE_PIXELS = 36_000_000;
@@ -1122,6 +1123,7 @@ async function parseOpenRouterResponse(response: Response): Promise<OpenRouterPa
 async function fetchOpenRouterJson(
   apiKey: string,
   body: string,
+  timeoutMs: number,
 ): Promise<OpenRouterFetchResult> {
   let lastError: unknown;
 
@@ -1139,7 +1141,7 @@ async function fetchOpenRouterJson(
           },
           body,
         },
-        OPENROUTER_FETCH_TIMEOUT_MS,
+        timeoutMs,
       );
       const payload = await parseOpenRouterResponse(response);
 
@@ -1261,7 +1263,11 @@ async function generateWithOpenRouter({
       modalities: ["image", "text"],
       ...(imageConfig ? { image_config: imageConfig } : {}),
     });
-    const { response, payload } = await fetchOpenRouterJson(apiKey, body);
+    const { response, payload } = await fetchOpenRouterJson(
+      apiKey,
+      body,
+      getImageModelFetchTimeoutMs(model),
+    );
 
     if (!response.ok) {
       throw new ProviderError(

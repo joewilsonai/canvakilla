@@ -1,4 +1,5 @@
 export const DEFAULT_IMAGE_MODEL_ID = "google/gemini-3.1-flash-image-preview";
+export const DEFAULT_IMAGE_MODEL_FETCH_TIMEOUT_MS = 70_000;
 
 export const IMAGE_MODEL_CONFIGS = {
   "google/gemini-3.1-flash-image-preview": {
@@ -18,6 +19,7 @@ export const IMAGE_MODEL_CONFIGS = {
   "openai/gpt-5.4-image-2": {
     bannerAspectRatio: "21:9",
     costWeight: 4,
+    fetchTimeoutMs: 180_000,
     label: "GPT Image 2",
     profileAspectRatio: "1:1",
   },
@@ -53,4 +55,9 @@ export function normalizeImageModelId(model: string): ImageModelId {
 export function getImageModelCost(model: ImageModelId, imageCount: number) {
   const referenceCost = Math.max(0, imageCount - 1);
   return IMAGE_MODEL_CONFIGS[model].costWeight + referenceCost;
+}
+
+export function getImageModelFetchTimeoutMs(model: ImageModelId) {
+  const config = IMAGE_MODEL_CONFIGS[model] as { fetchTimeoutMs?: number };
+  return config.fetchTimeoutMs || DEFAULT_IMAGE_MODEL_FETCH_TIMEOUT_MS;
 }
