@@ -65,3 +65,40 @@ test("LinkedIn profile source can be moved back to references without deletion",
     "1 parked ref not sent",
   );
 });
+
+test("LinkedIn typography prompts still use the selected image model", async ({
+  page,
+}) => {
+  let apiRequestBody = "";
+
+  await page.route("**/api/generate", async (route) => {
+    apiRequestBody = route.request().postDataBuffer()?.toString("utf8") || "";
+    await route.fulfill({
+      contentType: "application/json",
+      status: 200,
+      body: JSON.stringify({
+        imageBase64: TINY_PNG,
+        mimeType: "image/png",
+        model: "openai/gpt-5.4-image-2",
+        provider: "openrouter",
+      }),
+    });
+  });
+
+  await page.goto("/linkedin");
+  await page.getByLabel("Model").selectOption("openai/gpt-5.4-image-2");
+  await page.getByLabel(/Next LinkedIn banner edit/i).fill(`
+Create a professional LinkedIn cover banner in a wide 4:1 layout.
+Main text on the right-center: "not just talking about AI. shipping it."
+Under the divider, add smaller muted-gray monospace text:
+"microsoft → amazon → rapsodo → solo"
+  `);
+  await page.getByRole("button", { name: /Create Banner/i }).click();
+
+  await expect(page.getByText("Banner result loaded for next iteration")).toBeVisible();
+  expect(apiRequestBody).toContain('name="model"');
+  expect(apiRequestBody).toContain("openai/gpt-5.4-image-2");
+  await expect(
+    page.getByText("Typography-safe banner rendered from the prompt"),
+  ).not.toBeVisible();
+});

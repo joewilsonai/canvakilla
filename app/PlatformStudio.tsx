@@ -59,7 +59,6 @@ import {
   drawBannerProof,
   drawProfileProof,
   getPromptTargetHint,
-  renderTypeLockBanner,
 } from "./studio/canvas-renderers";
 import {
   dataUrlToFile,
@@ -1496,45 +1495,6 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     setLastMovedTarget(null);
 
     try {
-      const canRenderLocalTypeLock =
-        editTarget === "banner" && !currentImage && runReferences.length === 0;
-      const lockedImage = canRenderLocalTypeLock
-        ? renderTypeLockBanner(prompt, platform)
-        : "";
-      if (lockedImage) {
-        const nextItem: HistoryItem = {
-          id: crypto.randomUUID(),
-          image: lockedImage,
-          prompt: prompt.trim(),
-          model: "canvakilla-type-lock",
-          createdAt: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        };
-
-        setCurrentImage(lockedImage);
-        setHistory((items) => [nextItem, ...items].slice(0, 8));
-        captureClientEvent("image_generated", {
-          model: "canvakilla-type-lock",
-          target: editTarget,
-          platform,
-          has_current_image: !!currentImage,
-          reference_count: 0,
-          selected_reference_count: selectedReferenceIds.length,
-          source_mode: sourceMode,
-          prompt_renderer_used: true,
-        });
-        markFirstRunDone();
-        console.info("CanvaKilla rendered a typography-safe banner locally", {
-          platform,
-          target: editTarget,
-          promptPreview: prompt.trim().replace(/\s+/g, " ").slice(0, 120),
-        });
-        setStatus("Typography-safe banner rendered from the prompt");
-        return;
-      }
-
       const formData = new FormData();
       formData.append("prompt", prompt.trim());
       formData.append("model", model);
