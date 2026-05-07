@@ -317,11 +317,13 @@ function RealTweetCard({
 
 function CropGuardTooltip({
   id,
+  platform,
   tip,
   dismissed,
   onDismiss,
 }: {
   id: CropTipId;
+  platform: PlatformId;
   tip?: { label: string; body: string };
   dismissed: boolean;
   onDismiss: (id: CropTipId) => void;
@@ -338,7 +340,13 @@ function CropGuardTooltip({
         aria-label={`Explain ${tip.label}`}
         onClick={(event) => {
           event.stopPropagation();
-          setIsOpen((open) => !open);
+          setIsOpen((open) => {
+            const nextOpen = !open;
+            if (nextOpen) {
+              captureClientEvent("crop_tip_opened", { tip: id, platform });
+            }
+            return nextOpen;
+          });
         }}
       >
         ?
@@ -351,6 +359,7 @@ function CropGuardTooltip({
             type="button"
             onClick={(event) => {
               event.stopPropagation();
+              captureClientEvent("crop_tip_dismissed", { tip: id, platform });
               onDismiss(id);
             }}
           >
@@ -370,8 +379,55 @@ type PlatformPreviewProps = {
   templateVisible: boolean;
   dismissedCropTips: CropTipId[];
   onDismissCropTip: (id: CropTipId) => void;
+  onMoveActiveToReferences: () => void;
   references: ReferenceItem[];
 };
+
+type GenerationSourceMode =
+  | "from_scratch"
+  | "current_only"
+  | "refs_only"
+  | "current_plus_refs";
+
+function getGenerationSourceMode(
+  hasActiveImage: boolean,
+  selectedReferenceCount: number,
+): GenerationSourceMode {
+  if (hasActiveImage && selectedReferenceCount > 0) return "current_plus_refs";
+  if (hasActiveImage) return "current_only";
+  if (selectedReferenceCount > 0) return "refs_only";
+  return "from_scratch";
+}
+
+function getSourceModeLabel(mode: GenerationSourceMode, targetName: string) {
+  if (mode === "current_plus_refs") return `Current ${targetName} + clicked refs`;
+  if (mode === "current_only") return `Current ${targetName}`;
+  if (mode === "refs_only") return "Clicked refs only";
+  return "Prompt only";
+}
+
+function MoveToReferencesButton({
+  targetName,
+  onClick,
+  className = "",
+}: {
+  targetName: string;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      className={`move-to-refs-button ${className}`.trim()}
+      type="button"
+      onClick={onClick}
+      title={`Move current ${targetName} out of the preview and into references`}
+      aria-label={`Move current ${targetName} out of preview and into references`}
+    >
+      <ImagePlus size={15} aria-hidden="true" />
+      <span>Move to refs</span>
+    </button>
+  );
+}
 
 function LinkedInTemplateLayer({
   config,
@@ -394,6 +450,7 @@ function LinkedInTemplateLayer({
           crop guard
           <CropGuardTooltip
             id="crop"
+            platform={config.id}
             tip={config.cropTips.crop}
             dismissed={dismissedCropTips.includes("crop")}
             onDismiss={onDismissCropTip}
@@ -405,6 +462,7 @@ function LinkedInTemplateLayer({
           crop guard
           <CropGuardTooltip
             id="crop"
+            platform={config.id}
             tip={config.cropTips.crop}
             dismissed={dismissedCropTips.includes("crop")}
             onDismiss={onDismissCropTip}
@@ -416,6 +474,7 @@ function LinkedInTemplateLayer({
           side crop
           <CropGuardTooltip
             id="side-crop"
+            platform={config.id}
             tip={config.cropTips["side-crop"]}
             dismissed={dismissedCropTips.includes("side-crop")}
             onDismiss={onDismissCropTip}
@@ -427,6 +486,7 @@ function LinkedInTemplateLayer({
           side crop
           <CropGuardTooltip
             id="side-crop"
+            platform={config.id}
             tip={config.cropTips["side-crop"]}
             dismissed={dismissedCropTips.includes("side-crop")}
             onDismiss={onDismissCropTip}
@@ -444,6 +504,7 @@ function LinkedInTemplateLayer({
           profile photo
           <CropGuardTooltip
             id="avatar"
+            platform={config.id}
             tip={config.cropTips.avatar}
             dismissed={dismissedCropTips.includes("avatar")}
             onDismiss={onDismissCropTip}
@@ -457,13 +518,21 @@ function LinkedInTemplateLayer({
 function LinkedInBannerPreview({
   config,
   currentImage,
+  editTarget,
   templateVisible,
   dismissedCropTips,
   onDismissCropTip,
+  onMoveActiveToReferences,
   mobile = false,
 }: Pick<
   PlatformPreviewProps,
-  "config" | "currentImage" | "templateVisible" | "dismissedCropTips" | "onDismissCropTip"
+  | "config"
+  | "currentImage"
+  | "editTarget"
+  | "templateVisible"
+  | "dismissedCropTips"
+  | "onDismissCropTip"
+  | "onMoveActiveToReferences"
 > & {
   mobile?: boolean;
 }) {
@@ -483,6 +552,13 @@ function LinkedInBannerPreview({
           mobile={mobile}
           dismissedCropTips={dismissedCropTips}
           onDismissCropTip={onDismissCropTip}
+        />
+      )}
+      {currentImage && editTarget === "banner" && (
+        <MoveToReferencesButton
+          className="preview-move-button banner-move-button"
+          targetName={config.bannerLabel}
+          onClick={onMoveActiveToReferences}
         />
       )}
     </div>
@@ -557,6 +633,13 @@ function LinkedInDesktopPreview(props: PlatformPreviewProps) {
               editTarget={props.editTarget}
               profileImage={props.profileImage}
             />
+            {props.profileImage && props.editTarget === "profile" && (
+              <MoveToReferencesButton
+                className="preview-move-button linkedin-avatar-move-button"
+                targetName={props.config.profileLabel}
+                onClick={props.onMoveActiveToReferences}
+              />
+            )}
             <div className="linkedin-profile-tools" aria-hidden="true">
               <span className="linkedin-profile-badge">in</span>
               <Pencil size={22} />
@@ -729,7 +812,7 @@ function LinkedInDesktopPreview(props: PlatformPreviewProps) {
           </section>
         </div>
 
-        <aside className="linkedin-right-rail" aria-label="LinkedIn right rail preview">
+        <div className="linkedin-right-rail">
           <section className="linkedin-card linkedin-profile-settings">
             <h3>Profile language</h3>
             <p>English</p>
@@ -763,7 +846,7 @@ function LinkedInDesktopPreview(props: PlatformPreviewProps) {
               ),
             )}
           </section>
-        </aside>
+        </div>
       </div>
     </div>
   );
@@ -788,6 +871,13 @@ function LinkedInMobilePreview(props: PlatformPreviewProps) {
             profileImage={props.profileImage}
             mobile
           />
+          {props.profileImage && props.editTarget === "profile" && (
+            <MoveToReferencesButton
+              className="preview-move-button linkedin-mobile-avatar-move-button"
+              targetName={props.config.profileLabel}
+              onClick={props.onMoveActiveToReferences}
+            />
+          )}
           <div className="linkedin-mobile-copy">
             <h2>
               Joe Wilson <span className="linkedin-pronouns">He/Him</span>
@@ -976,6 +1066,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false);
   const [firstRunDone, setFirstRunDone] = useState(false);
   const [dismissedCropTips, setDismissedCropTips] = useState<CropTipId[]>([]);
+  const [lastMovedTarget, setLastMovedTarget] = useState<EditTarget | null>(null);
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState("");
 
@@ -996,6 +1087,10 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
   const canGenerate = prompt.trim().length > 0 && !isGenerating;
   const canExport = Boolean(activeImage);
   const showFirstRunNudge = !firstRunDone && references.length === 0 && !activeImage;
+  const sourceMode = getGenerationSourceMode(Boolean(activeImage), runReferences.length);
+  const sourceModeLabel = getSourceModeLabel(sourceMode, activeTargetName);
+  const parkedReferenceCount = Math.max(0, references.length - runReferences.length);
+  const primaryActionVerb = activeImage ? "Iterate" : "Create";
   const sourceSummary = [
     activeImage ? `Iterating current ${activeTargetName}` : `Creating ${activeTargetName}`,
     runReferences.length
@@ -1286,6 +1381,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     setProfileImage(dataUrl);
     setProfileName(file.name);
     setProfileHistory([]);
+    setLastMovedTarget(null);
     captureClientEvent("source_image_uploaded", { target: "profile", platform });
     markFirstRunDone();
     setError("");
@@ -1373,6 +1469,10 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
           promptTargetHint === "profile" ? "Profile" : "Banner"
         } mode first.`,
       );
+      captureClientEvent("wrong_mode_prompt_blocked", {
+        target: editTarget,
+        platform,
+      });
       setStatus("Wrong edit mode");
       return;
     }
@@ -1380,6 +1480,20 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     setIsGenerating(true);
     setError("");
     setStatus(`${selectedModelLabel} is composing · ${sourceSummary}`);
+    const generationEvent = {
+      model,
+      target: editTarget,
+      platform,
+      has_current_image: Boolean(activeImage),
+      reference_count: runReferences.length,
+      selected_reference_count: selectedReferenceIds.length,
+      source_mode: sourceMode,
+    };
+    captureClientEvent("generation_started", generationEvent);
+    if (lastMovedTarget === editTarget) {
+      captureClientEvent("generation_started_after_move", generationEvent);
+    }
+    setLastMovedTarget(null);
 
     try {
       const canRenderLocalTypeLock =
@@ -1407,6 +1521,8 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
           platform,
           has_current_image: !!currentImage,
           reference_count: 0,
+          selected_reference_count: selectedReferenceIds.length,
+          source_mode: sourceMode,
           prompt_renderer_used: true,
         });
         markFirstRunDone();
@@ -1525,6 +1641,8 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
         platform,
         has_current_image: editTarget === "banner" ? !!currentImage : !!profileImage,
         reference_count: runReferences.length,
+        selected_reference_count: selectedReferenceIds.length,
+        source_mode: sourceMode,
         prompt_renderer_used: false,
       });
       markFirstRunDone();
@@ -1645,6 +1763,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     }
 
     setError("");
+    setLastMovedTarget(null);
     setStatus(
       references.length
         ? `${editTarget === "profile" ? "Profile" : "Banner"} cleared; references kept`
@@ -1652,12 +1771,26 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     );
   }
 
-  function moveBannerToReferences() {
-    if (!currentImage) return;
+  function moveActiveImageToReferences() {
+    const imageToMove = activeImage;
+    const targetToMove = editTarget;
+    const targetName =
+      targetToMove === "profile" ? config.profileLabel : config.bannerLabel;
+    const movedName =
+      targetToMove === "profile"
+        ? "moved-profile.png"
+        : `moved-${platform}-banner.png`;
 
-    const movedImageBytes = getDataUrlBytes(currentImage);
+    if (!imageToMove) return;
+
+    captureClientEvent("move_to_references_clicked", {
+      target: targetToMove,
+      platform,
+    });
+
+    const movedImageBytes = getDataUrlBytes(imageToMove);
     if (movedImageBytes > MAX_CLIENT_TOTAL_IMAGE_BYTES) {
-      setError("That banner is too large to save as a reference.");
+      setError(`That ${targetName} is too large to save as a reference.`);
       return;
     }
 
@@ -1667,11 +1800,11 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     });
 
     setReferences((items) => {
-      const withoutDuplicate = items.filter((item) => item.image !== currentImage);
+      const withoutDuplicate = items.filter((item) => item.image !== imageToMove);
       const movedReference: ReferenceItem = {
         id: crypto.randomUUID(),
-        image: currentImage,
-        name: "moved-banner.png",
+        image: imageToMove,
+        name: movedName,
         label: `R${getNextReferenceNumber(withoutDuplicate) + 1}`,
         createdAt,
       };
@@ -1696,11 +1829,19 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
 
       return nextItems;
     });
-    setCurrentImage("");
+    if (targetToMove === "profile") {
+      setProfileImage("");
+      setProfileName("");
+      setProfileHistory([]);
+    } else {
+      setCurrentImage("");
+      setHistory([]);
+    }
+    setLastMovedTarget(targetToMove);
     setError("");
-    setStatus("Banner moved to references and parked until clicked");
+    setStatus(`${targetName} moved to references and parked until clicked`);
     captureClientEvent("current_image_moved_to_references", {
-      target: "banner",
+      target: targetToMove,
       platform,
     });
   }
@@ -1724,6 +1865,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     setPreviewMode("desktop");
     setHistory([]);
     setProfileHistory([]);
+    setLastMovedTarget(null);
     setFirstRunDone(false);
     setDismissedCropTips([]);
     setError("");
@@ -1747,7 +1889,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
   return (
     <main className={`app-shell platform-${platform}`}>
       <section className="workspace" aria-label={`${config.platformName} banner maker`}>
-        <aside className="control-panel">
+        <section className="control-panel">
           <nav className="platform-tabs" aria-label="Platform">
             {PLATFORM_IDS.map((platformId) => {
               const item = PLATFORM_CONFIGS[platformId];
@@ -1973,6 +2115,27 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
               </small>
             </label>
 
+            <div className="run-preflight" aria-label="Next generation source">
+              <span>Next run will use</span>
+              <strong>{sourceModeLabel}</strong>
+              <div>
+                <em>{activeImage ? "Active image sent" : "No active image"}</em>
+                <em>
+                  {runReferences.length
+                    ? `${runReferences.length} clicked ref${
+                        runReferences.length === 1 ? "" : "s"
+                      } sent`
+                    : "No clicked refs sent"}
+                </em>
+                {parkedReferenceCount > 0 && (
+                  <em>
+                    {parkedReferenceCount} parked ref
+                    {parkedReferenceCount === 1 ? "" : "s"} not sent
+                  </em>
+                )}
+              </div>
+            </div>
+
             <div className="prompt-chips" aria-label="Prompt starters">
               {activePromptStarters.map((starter, index) => (
                 <button
@@ -2011,12 +2174,21 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
               ) : (
                 <Sparkles size={18} aria-hidden="true" />
               )}
-              Iterate {editTarget === "profile" ? "Profile" : "Banner"}
+              {primaryActionVerb} {editTarget === "profile" ? "Profile" : "Banner"}
             </button>
             <button
               className="icon-action"
               type="button"
-              onClick={() => setTemplateVisible((visible) => !visible)}
+              onClick={() =>
+                setTemplateVisible((visible) => {
+                  const nextVisible = !visible;
+                  captureClientEvent("template_toggled", {
+                    platform,
+                    visible: nextVisible,
+                  });
+                  return nextVisible;
+                })
+              }
               title="Toggle template"
             >
               {templateVisible ? (
@@ -2026,18 +2198,6 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
               )}
               Template
             </button>
-            {editTarget === "banner" && (
-              <button
-                className="icon-action"
-                type="button"
-                onClick={moveBannerToReferences}
-                disabled={!currentImage}
-                title={`Move current banner out of the ${config.platformName} preview and into references`}
-              >
-                <ImagePlus size={18} aria-hidden="true" />
-                Move to Refs
-              </button>
-            )}
             <button
               className="icon-action"
               type="button"
@@ -2075,7 +2235,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
             <span className={error ? "status-dot danger" : "status-dot"} />
             <span>{error || status}</span>
           </div>
-        </aside>
+        </section>
 
         <section className={`preview-panel preview-${previewMode}`}>
           <div className="preview-toolbar">
@@ -2131,6 +2291,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                 templateVisible={templateVisible}
                 dismissedCropTips={dismissedCropTips}
                 onDismissCropTip={dismissCropTip}
+                onMoveActiveToReferences={moveActiveImageToReferences}
                 references={references}
               />
             ) : (
@@ -2142,6 +2303,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                 templateVisible={templateVisible}
                 dismissedCropTips={dismissedCropTips}
                 onDismissCropTip={dismissCropTip}
+                onMoveActiveToReferences={moveActiveImageToReferences}
                 references={references}
               />
             )
@@ -2246,6 +2408,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                           crop guard
                           <CropGuardTooltip
                             id="crop"
+                            platform={config.id}
                             tip={config.cropTips.crop}
                             dismissed={dismissedCropTips.includes("crop")}
                             onDismiss={dismissCropTip}
@@ -2257,6 +2420,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                           crop guard
                           <CropGuardTooltip
                             id="crop"
+                            platform={config.id}
                             tip={config.cropTips.crop}
                             dismissed={dismissedCropTips.includes("crop")}
                             onDismiss={dismissCropTip}
@@ -2268,6 +2432,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                           avatar zone
                           <CropGuardTooltip
                             id="avatar"
+                            platform={config.id}
                             tip={config.cropTips.avatar}
                             dismissed={dismissedCropTips.includes("avatar")}
                             onDismiss={dismissCropTip}
@@ -2279,6 +2444,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                           mobile action
                           <CropGuardTooltip
                             id="mobile-action"
+                            platform={config.id}
                             tip={config.cropTips["mobile-action"]}
                             dismissed={dismissedCropTips.includes("mobile-action")}
                             onDismiss={dismissCropTip}
@@ -2289,6 +2455,13 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                         <span>primary content</span>
                       </div>
                     </div>
+                  )}
+                  {currentImage && editTarget === "banner" && (
+                    <MoveToReferencesButton
+                      className="preview-move-button banner-move-button"
+                      targetName={config.bannerLabel}
+                      onClick={moveActiveImageToReferences}
+                    />
                   )}
                 </div>
 
@@ -2304,6 +2477,13 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                       <span>JW</span>
                     )}
                   </div>
+                  {profileImage && editTarget === "profile" && (
+                    <MoveToReferencesButton
+                      className="preview-move-button x-avatar-move-button"
+                      targetName={config.profileLabel}
+                      onClick={moveActiveImageToReferences}
+                    />
+                  )}
                   <div className="x-real-actions">
                     <span className="x-round-button" aria-hidden="true">
                       <CircleEllipsis size={20} aria-hidden="true" />
@@ -2354,7 +2534,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                 ))}
               </div>
 
-              <aside className="x-right-rail" aria-label="X preview sidebar">
+	              <div className="x-right-rail">
                 <div className="x-search-box">
                   <Search size={18} aria-hidden="true" />
                   <span>Search</span>
@@ -2425,7 +2605,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                     Show more
                   </span>
                 </section>
-              </aside>
+	              </div>
             </div>
           ) : (
             <div className="mobile-stage">
@@ -2468,16 +2648,17 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                     </div>
                   )}
 
-                  {templateVisible && (
-                    <div
-                      className="template-layer mobile-template"
-                      aria-label="Mobile X quiet-zone template"
-                    >
+	                  {templateVisible && (
+	                    <div
+	                      className="template-layer mobile-template"
+	                      aria-label="Mobile X quiet-zone template"
+	                    >
                       <div className="quiet-zone">
                         <span>
                           avatar
                           <CropGuardTooltip
                             id="avatar"
+                            platform={config.id}
                             tip={config.cropTips.avatar}
                             dismissed={dismissedCropTips.includes("avatar")}
                             onDismiss={dismissCropTip}
@@ -2489,6 +2670,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                           mobile action
                           <CropGuardTooltip
                             id="mobile-action"
+                            platform={config.id}
                             tip={config.cropTips["mobile-action"]}
                             dismissed={dismissedCropTips.includes("mobile-action")}
                             onDismiss={dismissCropTip}
@@ -2496,6 +2678,13 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                         </span>
                       </div>
                     </div>
+                  )}
+                  {currentImage && editTarget === "banner" && (
+                    <MoveToReferencesButton
+                      className="preview-move-button banner-move-button"
+                      targetName={config.bannerLabel}
+                      onClick={moveActiveImageToReferences}
+                    />
                   )}
                 </div>
 
@@ -2511,6 +2700,13 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                       <span>JW</span>
                     )}
                   </div>
+                  {profileImage && editTarget === "profile" && (
+                    <MoveToReferencesButton
+                      className="preview-move-button x-mobile-avatar-move-button"
+                      targetName={config.profileLabel}
+                      onClick={moveActiveImageToReferences}
+                    />
+                  )}
                   <div className="x-mobile-actions">
                     <span className="x-round-button" aria-hidden="true">
                       <MessageCircle size={26} aria-hidden="true" />
