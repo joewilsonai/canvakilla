@@ -10,6 +10,7 @@ import {
   normalizeImageModelId,
   type ImageModelId,
 } from "../../../lib/image-models";
+import { getPublicGenerationErrorMessage } from "../../../lib/generation-errors";
 import {
   acquireGenerationGuard,
   checkGenerationRateLimit,
@@ -22,6 +23,7 @@ import {
   type LimitCheck,
   type RateLimitOptions,
 } from "../../../lib/generation-limiter";
+import { normalizeReferenceLabels } from "../../../lib/generation-request";
 import { getPlatformConfig, type PlatformId } from "../../../lib/platforms";
 import { captureServerEvent } from "../../../lib/posthog-server";
 
@@ -1283,12 +1285,18 @@ async function generateWithOpenRouter({
         : 500;
     const message =
       error instanceof ProviderError
-        ? error.message
+        ? getPublicGenerationErrorMessage({ code: error.code, status })
         : "Image generation failed. Try a smaller image or a different prompt.";
     const code =
       error instanceof ProviderError ? error.code : "image_generation_failed";
 
-    console.error("Image generation failed", { code, status, message });
+    console.error("Image generation failed", {
+      code,
+      status,
+      ...(process.env.DEBUG_GENERATION_LOGS === "1" && error instanceof ProviderError
+        ? { provider_message: error.message.slice(0, 240) }
+        : {}),
+    });
 
     return NextResponse.json(
       {
@@ -1349,9 +1357,7 @@ export async function POST(request: Request) {
   const referenceImages = formData
     .getAll("referenceImages")
     .filter((image): image is File => image instanceof File && image.size > 0);
-  const referenceLabels = referenceImages
-    .slice(0, MAX_REFERENCE_IMAGES_PER_RUN)
-    .map((_, index) => `R${index + 1}`);
+  const rawReferenceLabels = formData.getAll("referenceLabels");
 
   if (!prompt) {
     return withSessionCookie(
@@ -1383,6 +1389,10 @@ export async function POST(request: Request) {
     );
   }
 
+  const referenceLabels = normalizeReferenceLabels(
+    rawReferenceLabels,
+    referenceImages.length,
+  );
   const rawImages: ImageInput[] = [];
 
   if (currentImage instanceof File && currentImage.size > 0) {
@@ -1390,7 +1400,7 @@ export async function POST(request: Request) {
   }
 
   referenceImages.forEach((file, index) => {
-    rawImages.push({ file, label: `R${index + 1}` });
+    rawImages.push({ file, label: referenceLabels[index] });
   });
 
   console.info("CanvaKilla generation request", {
@@ -1415,64 +1425,11 @@ export async function POST(request: Request) {
     );
   }
 
-  let images: ImageInput[];
-  try {
-    images = await Promise.all(rawImages.map((image) => validateSourceImage(image)));
-  } catch (error) {
-    return withSessionCookie(
-      NextResponse.json(
-        {
-          error:
-            error instanceof Error
-              ? error.message
-              : "Upload a PNG, JPEG, or WebP image.",
-        },
-        { status: 400 },
-      ),
-      session,
-    );
-  }
-
-  const totalImagePixels = images.reduce(
-    (total, image) =>
-      total +
-      (image.sourceDimensions
-        ? image.sourceDimensions.width * image.sourceDimensions.height
-        : image.dimensions
-          ? image.dimensions.width * image.dimensions.height
-          : 0),
-    0,
-  );
-
-  if (totalImagePixels > MAX_TOTAL_SOURCE_IMAGE_PIXELS) {
-    return withSessionCookie(
-      NextResponse.json(
-        { error: "Uploaded images are too large in total dimensions." },
-        { status: 400 },
-      ),
-      session,
-    );
-  }
-
-  const totalNormalizedImageBytes = images.reduce(
-    (total, image) => total + (image.buffer?.length || image.file.size),
-    0,
-  );
-  if (totalNormalizedImageBytes > MAX_TOTAL_SOURCE_IMAGE_BYTES) {
-    return withSessionCookie(
-      NextResponse.json(
-        { error: "Keep generation source images under 4MB total. Remove a few references and try again." },
-        { status: 400 },
-      ),
-      session,
-    );
-  }
-
   const maxActiveGenerations = getLimit(
     "MAX_ACTIVE_GENERATIONS",
     DEFAULT_MAX_ACTIVE_GENERATIONS,
   );
-  const modelCost = getModelCost(model, images.length);
+  const modelCost = getModelCost(model, rawImages.length);
   const ipLimitOptions = {
     cost: modelCost,
     costMinuteLimit: getLimit(
@@ -1615,6 +1572,59 @@ export async function POST(request: Request) {
   }
 
   try {
+    let images: ImageInput[];
+    try {
+      images = await Promise.all(rawImages.map((image) => validateSourceImage(image)));
+    } catch (error) {
+      return withSessionCookie(
+        NextResponse.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Upload a PNG, JPEG, or WebP image.",
+          },
+          { status: 400 },
+        ),
+        session,
+      );
+    }
+
+    const totalImagePixels = images.reduce(
+      (total, image) =>
+        total +
+        (image.sourceDimensions
+          ? image.sourceDimensions.width * image.sourceDimensions.height
+          : image.dimensions
+            ? image.dimensions.width * image.dimensions.height
+            : 0),
+      0,
+    );
+
+    if (totalImagePixels > MAX_TOTAL_SOURCE_IMAGE_PIXELS) {
+      return withSessionCookie(
+        NextResponse.json(
+          { error: "Uploaded images are too large in total dimensions." },
+          { status: 400 },
+        ),
+        session,
+      );
+    }
+
+    const totalNormalizedImageBytes = images.reduce(
+      (total, image) => total + (image.buffer?.length || image.file.size),
+      0,
+    );
+    if (totalNormalizedImageBytes > MAX_TOTAL_SOURCE_IMAGE_BYTES) {
+      return withSessionCookie(
+        NextResponse.json(
+          { error: "Keep generation source images under 4MB total. Remove a few references and try again." },
+          { status: 400 },
+        ),
+        session,
+      );
+    }
+
     const response = await generateWithOpenRouter({
       images,
       model,

@@ -2,6 +2,7 @@
   "name": "canvakilla",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "engines": {
     "node": "22.x"
   },
@@ -9,6 +10,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "node --test --experimental-strip-types tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:strict": "tsc --noEmit --noUnusedLocals --noUnusedParameters"
   },
