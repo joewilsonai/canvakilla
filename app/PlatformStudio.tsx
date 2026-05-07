@@ -1475,17 +1475,15 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
         );
       }
 
-      await Promise.all(
-        runReferences.map(async (reference) => {
-          await appendUploadImage(
-            "referenceImages",
-            reference.image,
-            `${reference.label}-${reference.name}`,
-            "reference",
-          );
-          formData.append("referenceLabels", reference.label);
-        }),
-      );
+      for (const reference of runReferences) {
+        await appendUploadImage(
+          "referenceImages",
+          reference.image,
+          `${reference.label}-${reference.name}`,
+          "reference",
+        );
+        formData.append("referenceLabels", reference.label);
+      }
 
       const response = await fetch("/api/generate", {
         method: "POST",

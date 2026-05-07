@@ -30,12 +30,16 @@ const ALLOWED_EVENT_PROPERTIES = {
     "platform",
     "has_current_image",
     "reference_count",
+    "prompt_renderer_used",
   ],
   image_generation_failed: ["model", "target", "platform", "error_kind"],
   model_changed: ["model", "platform"],
   current_image_moved_to_references: ["target", "platform"],
   prompt_starter_clicked: ["starter_index", "target", "platform"],
   reference_images_added: ["count", "platform"],
+  reference_deselected_for_generation: ["reference_label", "target", "platform"],
+  reference_loaded_as_profile_source: ["reference_label", "platform"],
+  reference_selected_for_generation: ["reference_label", "target", "platform"],
   source_image_uploaded: ["target", "platform"],
 } as const;
 

@@ -67,6 +67,7 @@ npm install
 npm run dev
 npm run typecheck
 npm run typecheck:strict
+npm test
 ```
 
 Open `http://localhost:3000`, upload a reference image, type a prompt, hit Iterate.
@@ -106,7 +107,7 @@ Open `http://localhost:3000`, upload a reference image, type a prompt, hit Itera
 
 - **Next.js 15** App Router, server components for the API route
 - **TypeScript**
-- **Tailwind CSS** for the UI
+- **Plain CSS modules by surface area** for the UI
 - **OpenRouter** for unified image-model access (GPT Image 2, Gemini Flash Image variants)
 - **PostHog** for product analytics (optional, sanitized)
 - **Vercel** for hosting and edge serverless deployment
@@ -115,7 +116,7 @@ Open `http://localhost:3000`, upload a reference image, type a prompt, hit Itera
 ## Roadmap
 
 - [x] **X banner mode** (1500 × 500, 3:1) — shipped May 2026
-- [ ] **LinkedIn banner mode** (1584 × 396, 4:1) — different profile photo overlay coords, no mobile-action overlay (LinkedIn UI doesn't overlap the banner)
+- [x] **LinkedIn banner mode** (1584 × 396, 4:1) — different profile photo overlay coords, no mobile-action overlay (LinkedIn UI doesn't overlap the banner)
 - [ ] **Instagram header mode**
 - [ ] **TikTok profile banner mode**
 - [ ] **Facebook cover photo mode**
