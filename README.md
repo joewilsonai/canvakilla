@@ -79,6 +79,7 @@ Open `http://localhost:3000`, upload a reference image, type a prompt, hit Itera
 | `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` | optional | Enables analytics; without it the site runs analytics-disabled |
 | `NEXT_PUBLIC_POSTHOG_HOST` | optional | Defaults to `https://us.i.posthog.com` |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | recommended for production | Shared rate limits and active-generation locks across Vercel serverless instances |
+| `UPSTASH_REDIS_KV_REST_API_URL` / `UPSTASH_REDIS_KV_REST_API_TOKEN` | recommended for production | Vercel Marketplace-prefixed Upstash Redis aliases; accepted automatically |
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | recommended for production | Vercel KV-compatible aliases for the same shared limiter |
 | `CANVAKILLA_REQUIRE_SHARED_LIMITER` | optional | Set to `true` in production to fail closed if Redis/KV is missing or unavailable |
 | `GENERATION_RATE_LIMIT_PER_MINUTE` | optional | Default 4 — per signed session |
