@@ -99,6 +99,14 @@ Under the divider, add smaller muted-gray monospace text:
   expect(apiRequestBody).toContain('name="model"');
   expect(apiRequestBody).toContain("openai/gpt-5.4-image-2");
   await expect(
+    page.getByRole("button", { name: /Iterate Current Banner/i }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Start fresh: park current/i }).click();
+  await expect(page.getByLabel("Next generation source")).toContainText("Prompt only");
+  await expect(page.getByLabel("Next generation source")).toContainText(
+    "1 parked ref not sent",
+  );
+  await expect(
     page.getByText("Typography-safe banner rendered from the prompt"),
   ).not.toBeVisible();
 });

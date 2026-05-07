@@ -1083,13 +1083,17 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
   );
   const runReferences = (editTarget === "banner" ? selectedReferences : [])
     .slice(0, MAX_REFERENCE_IMAGES_PER_RUN);
-  const canGenerate = prompt.trim().length > 0 && !isGenerating;
+  const canGenerate = workspaceLoaded && prompt.trim().length > 0 && !isGenerating;
   const canExport = Boolean(activeImage);
   const showFirstRunNudge = !firstRunDone && references.length === 0 && !activeImage;
   const sourceMode = getGenerationSourceMode(Boolean(activeImage), runReferences.length);
   const sourceModeLabel = getSourceModeLabel(sourceMode, activeTargetName);
   const parkedReferenceCount = Math.max(0, references.length - runReferences.length);
-  const primaryActionVerb = activeImage ? "Iterate" : "Create";
+  const primaryActionLabel = !workspaceLoaded
+    ? "Loading workspace"
+    : activeImage
+      ? `Iterate Current ${editTarget === "profile" ? "Profile" : "Banner"}`
+      : `Create ${editTarget === "profile" ? "Profile" : "Banner"}`;
   const sourceSummary = [
     activeImage ? `Iterating current ${activeTargetName}` : `Creating ${activeTargetName}`,
     runReferences.length
@@ -2066,7 +2070,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
               />
               <small className="source-helper">
                 {activeImage
-                  ? `Current ${activeTargetName} is always iterated.`
+                  ? `Current ${activeTargetName} is sent when you iterate. Park it first for a prompt-only run.`
                   : `No current ${activeTargetName} yet.`}{" "}
                 {editTarget === "profile"
                   ? "Click a reference to load it as the profile edit source."
@@ -2094,6 +2098,16 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                   </em>
                 )}
               </div>
+              {activeImage && (
+                <button
+                  className="source-action"
+                  type="button"
+                  onClick={moveActiveImageToReferences}
+                >
+                  <ImagePlus size={14} aria-hidden="true" />
+                  Start fresh: park current
+                </button>
+              )}
             </div>
 
             <div className="prompt-chips" aria-label="Prompt starters">
@@ -2134,7 +2148,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
               ) : (
                 <Sparkles size={18} aria-hidden="true" />
               )}
-              {primaryActionVerb} {editTarget === "profile" ? "Profile" : "Banner"}
+              {primaryActionLabel}
             </button>
             <button
               className="icon-action"

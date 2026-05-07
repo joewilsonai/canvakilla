@@ -612,6 +612,27 @@ button:disabled {
   font-weight: 850;
 }
 
+.source-action {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid rgba(29, 155, 240, 0.45);
+  border-radius: 999px;
+  background: rgba(29, 155, 240, 0.12);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.source-action:hover {
+  border-color: rgba(29, 155, 240, 0.78);
+  background: rgba(29, 155, 240, 0.2);
+}
+
 select,
 textarea {
   width: 100%;
