@@ -65,6 +65,8 @@ cd canvakilla
 cp .env.example .env.local        # fill in OPENROUTER_API_KEY
 npm install
 npm run dev
+npm run typecheck
+npm run typecheck:strict
 ```
 
 Open `http://localhost:3000`, upload a reference image, type a prompt, hit Iterate.
