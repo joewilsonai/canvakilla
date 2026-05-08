@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DEFAULT_IMAGE_MODEL_FETCH_TIMEOUT_MS,
+  getImageModelAspectRatio,
   getImageModelFetchTimeoutMs,
   normalizeImageModelId,
 } from "../lib/image-models.ts";
@@ -16,4 +17,27 @@ test("gives slower GPT Image 2 requests a longer provider timeout", () => {
     DEFAULT_IMAGE_MODEL_FETCH_TIMEOUT_MS,
   );
   assert.equal(getImageModelFetchTimeoutMs("openai/gpt-5.4-image-2"), 180_000);
+});
+
+test("uses provider-supported banner aspect ratios per model and platform", () => {
+  assert.equal(
+    getImageModelAspectRatio("google/gemini-3.1-flash-image-preview", "banner", "linkedin"),
+    "4:1",
+  );
+  assert.equal(
+    getImageModelAspectRatio("google/gemini-3-pro-image-preview", "banner", "linkedin"),
+    "21:9",
+  );
+  assert.equal(
+    getImageModelAspectRatio("openai/gpt-5.4-image-2", "banner", "linkedin"),
+    "21:9",
+  );
+  assert.equal(
+    getImageModelAspectRatio("google/gemini-2.5-flash-image", "banner", "linkedin"),
+    null,
+  );
+  assert.equal(
+    getImageModelAspectRatio("google/gemini-3.1-flash-image-preview", "banner", "x"),
+    "21:9",
+  );
 });

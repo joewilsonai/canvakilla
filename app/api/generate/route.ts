@@ -6,6 +6,7 @@ import sharp from "sharp";
 import {
   DEFAULT_IMAGE_MODEL_ID,
   IMAGE_MODEL_CONFIGS,
+  getImageModelAspectRatio,
   getImageModelCost,
   getImageModelFetchTimeoutMs,
   normalizeImageModelId,
@@ -165,9 +166,7 @@ function normalizePlatformId(platform: string): PlatformId {
 }
 
 function getAspectRatio(model: ModelId, target: Target, platform: PlatformId) {
-  const config = IMAGE_MODEL_CONFIGS[model];
-  if (target === "profile") return config.profileAspectRatio;
-  return config.bannerAspectRatio ? getPlatformConfig(platform).bannerAspectRatio : null;
+  return getImageModelAspectRatio(model, target, platform);
 }
 
 function getImageConfig(model: ModelId, target: Target, platform: PlatformId) {
