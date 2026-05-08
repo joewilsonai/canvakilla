@@ -26,6 +26,7 @@ test("builds platform and model aware prompt enhancement instructions", () => {
   assert.match(userMessage, /Founder helping teams learn AI by doing/);
   assert.match(userMessage, /Do not claim you visited the links/);
   assert.match(userMessage, /central mobile-safe region/);
+  assert.match(userMessage, /fake LinkedIn profile photo/);
   assert.match(userMessage, /current LinkedIn banner image/);
 });
 

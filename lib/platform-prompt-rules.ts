@@ -22,3 +22,17 @@ export function buildBannerTypographyInstructions(platform: PlatformId) {
     "For lower-right credits or tiny metadata on X, place them above the mobile action button quiet zone and away from the absolute lower-right corner.",
   ];
 }
+
+export function buildBannerOverlayExclusionInstructions(platform: PlatformId) {
+  if (platform === "linkedin") {
+    return [
+      "Do not render a fake LinkedIn profile photo, avatar circle, portrait placeholder, headshot badge, initials circle, or profile-card mockup in the lower-left profile-photo overlay area.",
+      "Leave the lower-left profile-photo overlap area as plain supporting artwork or negative space so the real LinkedIn profile photo can sit on top of it later.",
+    ];
+  }
+
+  return [
+    "Do not render a fake X/Twitter profile photo, avatar circle, portrait placeholder, initials circle, or profile-card mockup in the lower-left avatar quiet zone.",
+    "Leave the lower-left avatar overlap area as plain supporting artwork or negative space so the real X profile picture can sit on top of it later.",
+  ];
+}
