@@ -3,14 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "canvakilla": "./bin/canvakilla.mjs"
+  },
   "engines": {
     "node": "22.x"
   },
   "scripts": {
+    "cli": "node ./bin/canvakilla.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test --experimental-strip-types tests/*.test.ts",
+    "test": "node --test --experimental-strip-types tests/*.test.ts tests/*.test.mjs",
     "test:ui": "playwright test",
     "typecheck": "tsc --noEmit",
     "typecheck:strict": "tsc --noEmit --noUnusedLocals --noUnusedParameters"
