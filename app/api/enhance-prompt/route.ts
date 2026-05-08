@@ -20,6 +20,7 @@ import { getOpenRouterApiKey, OPENROUTER_API_URL } from "../../../lib/openrouter
 import {
   buildPromptEnhancerMessages,
   extractEnhancedPrompt,
+  normalizeProfileContext,
 } from "../../../lib/prompt-enhancer";
 import { captureServerEvent } from "../../../lib/posthog-server";
 import type { EditTarget, PlatformId } from "../../../lib/platforms";
@@ -42,6 +43,7 @@ type EnhancePromptRequest = {
   target?: unknown;
   platform?: unknown;
   hasCurrentImage?: unknown;
+  profileContext?: unknown;
   referenceLabels?: unknown;
 };
 
@@ -316,6 +318,7 @@ export async function POST(request: Request) {
   const model = normalizeModel(payload.model);
   const referenceLabels = normalizeReferenceLabelInput(payload.referenceLabels);
   const hasCurrentImage = normalizeBoolean(payload.hasCurrentImage);
+  const profileContext = normalizeProfileContext(payload.profileContext);
   const distinctId = getAnalyticsDistinctId(request);
 
   if (!prompt) {
@@ -349,6 +352,7 @@ export async function POST(request: Request) {
       target,
       platform,
       has_current_image: hasCurrentImage,
+      has_profile_context: Boolean(profileContext),
       reference_count: referenceLabels.length,
       enhancer_model: getPromptEnhancerModel(),
       ...getPromptLogDetails(prompt),
@@ -362,6 +366,7 @@ export async function POST(request: Request) {
         target,
         platform,
         has_current_image: hasCurrentImage,
+        has_profile_context: Boolean(profileContext),
         reference_count: referenceLabels.length,
       },
     });
@@ -384,6 +389,7 @@ export async function POST(request: Request) {
             platform,
             target,
             hasCurrentImage,
+            profileContext,
             referenceLabels,
           }),
           max_tokens: 700,
@@ -424,6 +430,7 @@ export async function POST(request: Request) {
         target,
         platform,
         has_current_image: hasCurrentImage,
+        has_profile_context: Boolean(profileContext),
         reference_count: referenceLabels.length,
         enhancer_model: openRouterPayload.model || getPromptEnhancerModel(),
       },

@@ -1062,6 +1062,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
   const [profileName, setProfileName] = useState("");
   const [currentImage, setCurrentImage] = useState("");
   const [prompt, setPrompt] = useState(config.bannerPrompts[0]);
+  const [profileContext, setProfileContext] = useState("");
   const [model, setModel] = useState(DEFAULT_IMAGE_MODEL_ID);
   const [templateVisible, setTemplateVisible] = useState(true);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -1193,6 +1194,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
         setProfileImage(savedState.profileImage || "");
         setProfileName(savedState.profileName || "");
         setCurrentImage(savedState.currentImage || "");
+        setProfileContext(savedState.profileContext || "");
         const restoredTarget: EditTarget =
           savedState.editTarget === "profile" ? "profile" : "banner";
         const restoredPrompt =
@@ -1266,6 +1268,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
         profileName,
         currentImage,
         prompt,
+        profileContext,
         model,
         templateVisible,
         history,
@@ -1283,6 +1286,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
     profileHistory,
     profileName,
     prompt,
+    profileContext,
     previewMode,
     references,
     selectedReferenceIds,
@@ -1480,6 +1484,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
       target: editTarget,
       platform,
       has_current_image: Boolean(activeImage),
+      has_profile_context: Boolean(profileContext.trim()),
       reference_count: runReferences.length,
     });
 
@@ -1495,6 +1500,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
           target: editTarget,
           platform,
           hasCurrentImage: Boolean(activeImage),
+          profileContext: profileContext.trim(),
           referenceLabels: runReferences.map((reference) => reference.label),
         }),
       });
@@ -1515,6 +1521,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
         target: editTarget,
         platform,
         has_current_image: Boolean(activeImage),
+        has_profile_context: Boolean(profileContext.trim()),
         reference_count: runReferences.length,
       });
       window.setTimeout(() => promptRef.current?.focus(), 0);
@@ -1529,6 +1536,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
         model,
         target: editTarget,
         platform,
+        has_profile_context: Boolean(profileContext.trim()),
         error_kind: getGenerationErrorKind(errorMessage),
       });
     } finally {
@@ -2127,6 +2135,25 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                 ))}
               </select>
             </div>
+
+            <label className="profile-context-field" htmlFor="profile-context">
+              <span>Profile context for ideas</span>
+              <textarea
+                id="profile-context"
+                value={profileContext}
+                onChange={(event) => setProfileContext(event.target.value)}
+                placeholder={
+                  platform === "linkedin"
+                    ? "Paste LinkedIn URL, headline, About text, recent posts, audience, offer..."
+                    : "Paste X URL, bio, recent posts, website, audience, offer..."
+                }
+                rows={4}
+              />
+              <small className="source-helper">
+                Enhance Prompt uses this for positioning and banner ideas. It does not
+                fetch private profiles or send images.
+              </small>
+            </label>
 
             <label className="prompt-field" htmlFor="prompt">
               <span>Next {activeTargetName} edit</span>
