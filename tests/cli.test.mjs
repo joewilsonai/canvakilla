@@ -21,6 +21,7 @@ test("parses enhance command options and repeated references", () => {
     "logo.png",
     "--reference",
     "headshot.jpg",
+    "--template-guide",
     "--json",
   ]);
 
@@ -30,6 +31,7 @@ test("parses enhance command options and repeated references", () => {
   assert.equal(parsed.options.prompt, "make it premium");
   assert.equal(parsed.options.profileContextFile, "profile.txt");
   assert.deepEqual(parsed.options.references, ["logo.png", "headshot.jpg"]);
+  assert.equal(parsed.options.templateGuide, true);
   assert.equal(parsed.options.json, true);
 });
 
@@ -59,5 +61,6 @@ test("chooses platform-sized default output paths", () => {
 test("prints command-specific help", () => {
   assert.match(getHelp("generate"), /canvakilla generate/);
   assert.match(getHelp("generate"), /--enhance/);
+  assert.match(getHelp("generate"), /--template-guide/);
   assert.match(getHelp("enhance"), /--profile-context/);
 });

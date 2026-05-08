@@ -113,7 +113,10 @@ canvakilla enhance --platform x --prompt "make it sharper"
 
 Useful options: `--platform x|linkedin`, `--target banner|profile`,
 `--model <openrouter-model-id>`, `--current <image>`, repeated
-`--reference <image>`, `--json`, and `--print-prompt`.
+`--reference <image>`, `--json`, and `--print-prompt`. The internal crop-guide
+image is off by default because some image models copy template labels into the
+final artwork; `--template-guide` is available only when you intentionally want
+to attach that guide for debugging.
 
 ### Environment variables
 
