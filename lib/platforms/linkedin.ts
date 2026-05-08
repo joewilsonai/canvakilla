@@ -6,7 +6,7 @@ export const linkedinPlatform: PlatformConfig = {
   tabLabel: "LinkedIn",
   brandEyebrow: "Make a banner that hires you",
   appName: "CanvaKilla.com",
-  quickStartKicker: "Build a LinkedIn-safe cover",
+  quickStartKicker: "Make a profile cover for LinkedIn",
   quickStartTitle: "Upload proof, describe the upgrade, ship a sharper profile.",
   quickStartBody:
     "The prompt protects the profile-photo overlay, mobile side crops, and slim top/bottom crop guards.",
