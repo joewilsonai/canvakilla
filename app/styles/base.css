@@ -552,6 +552,7 @@ button:disabled {
 }
 
 .field-row label,
+.profile-context-field span,
 .prompt-field span {
   color: var(--muted);
   font-size: 13px;
@@ -683,11 +684,16 @@ textarea {
   line-height: 1.45;
 }
 
+.profile-context-field textarea {
+  min-height: 96px;
+}
+
 select:focus,
 textarea:focus,
 button:focus-visible,
 .upload-zone:focus-within,
 .profile-upload:focus-within,
+.profile-context-field:focus-within,
 .target-switch:focus-within {
   outline: 3px solid rgba(29, 155, 240, 0.35);
   outline-offset: 2px;

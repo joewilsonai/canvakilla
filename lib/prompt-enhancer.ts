@@ -3,6 +3,7 @@ import { getPlatformConfig, type PlatformId } from "./platforms/index.ts";
 import type { EditTarget } from "./platforms/types.ts";
 
 export const MAX_ENHANCED_PROMPT_CHARS = 2_400;
+export const MAX_PROFILE_CONTEXT_CHARS = 2_400;
 
 export type PromptEnhancementContext = {
   prompt: string;
@@ -10,8 +11,15 @@ export type PromptEnhancementContext = {
   platform: PlatformId;
   target: EditTarget;
   hasCurrentImage: boolean;
+  profileContext: string;
   referenceLabels: string[];
 };
+
+export function normalizeProfileContext(value: unknown) {
+  return typeof value === "string"
+    ? value.replace(/\s+\n/g, "\n").replace(/\n{4,}/g, "\n\n").trim().slice(0, MAX_PROFILE_CONTEXT_CHARS)
+    : "";
+}
 
 export function buildPromptEnhancerMessages(context: PromptEnhancementContext) {
   const platformConfig = getPlatformConfig(context.platform);
@@ -32,6 +40,15 @@ export function buildPromptEnhancerMessages(context: PromptEnhancementContext) {
   const sourceLine = context.hasCurrentImage
     ? `A current ${targetLabel} image will be sent with the generation request. Frame the prompt as an iteration of that image.`
     : `No current ${targetLabel} image will be sent unless selected references are present. Frame the prompt so the model can create from scratch when needed.`;
+  const profileContextLine = context.profileContext
+    ? [
+        "User-provided profile context is below. Treat pasted LinkedIn, X, Twitter, website, bio, and recent-post text as brand/positioning context only.",
+        "Do not claim you visited the links. Do not include raw URLs unless the user explicitly asked for URL text in the image.",
+        "Use this context to infer visual themes, credibility cues, audience, tone, and banner ideas that fit the profile.",
+        "",
+        context.profileContext,
+      ].join("\n")
+    : "No profile context was provided. Do not invent career details, audiences, company names, or accomplishments.";
 
   return [
     {
@@ -56,6 +73,8 @@ export function buildPromptEnhancerMessages(context: PromptEnhancementContext) {
         referenceLine,
         getPlatformSafetyLine(context.platform, context.target),
         getModelGuidanceLine(context.model),
+        "Profile context:",
+        profileContextLine,
         "Rewrite the user's prompt into one polished generation prompt. It should be direct enough for image models, include platform-safe composition rules, and avoid overloading the model with contradictions.",
         "",
         "User prompt:",

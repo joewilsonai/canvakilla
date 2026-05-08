@@ -45,6 +45,7 @@ export type PersistedWorkspace = {
   profileName: string;
   currentImage: string;
   prompt: string;
+  profileContext?: string;
   model: string;
   templateVisible: boolean;
   history: HistoryItem[];
