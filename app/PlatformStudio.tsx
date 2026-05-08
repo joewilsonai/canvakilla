@@ -73,6 +73,7 @@ import {
   syncReferenceInstructions,
 } from "./studio/references";
 import type {
+  EnhancePromptResponse,
   GenerateResponse,
   HistoryItem,
   PersistedWorkspace,
@@ -1026,6 +1027,21 @@ async function readGeneratePayload(response: Response) {
   }
 }
 
+async function readEnhancePromptPayload(response: Response) {
+  const text = await response.text();
+  if (!text.trim()) return {} as EnhancePromptResponse;
+
+  try {
+    return JSON.parse(text) as EnhancePromptResponse;
+  } catch {
+    return {
+      error:
+        text.replace(/\s+/g, " ").trim().slice(0, 240) ||
+        "Prompt enhancement failed.",
+    };
+  }
+}
+
 export default function PlatformStudio({ platform }: { platform: PlatformId }) {
   const config = PLATFORM_CONFIGS[platform];
   const workspaceKey = platform === "x" ? WORKSPACE_KEY : `${WORKSPACE_KEY}-${platform}`;
@@ -1051,6 +1067,7 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [profileHistory, setProfileHistory] = useState<HistoryItem[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isEnhancingPrompt, setIsEnhancingPrompt] = useState(false);
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false);
   const [firstRunDone, setFirstRunDone] = useState(false);
   const [dismissedCropTips, setDismissedCropTips] = useState<CropTipId[]>([]);
@@ -1072,7 +1089,10 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
   );
   const runReferences = (editTarget === "banner" ? selectedReferences : [])
     .slice(0, MAX_REFERENCE_IMAGES_PER_RUN);
-  const canGenerate = workspaceLoaded && prompt.trim().length > 0 && !isGenerating;
+  const canGenerate =
+    workspaceLoaded && prompt.trim().length > 0 && !isGenerating && !isEnhancingPrompt;
+  const canEnhancePrompt =
+    workspaceLoaded && prompt.trim().length > 0 && !isGenerating && !isEnhancingPrompt;
   const canExport = Boolean(activeImage);
   const showFirstRunNudge = !firstRunDone && references.length === 0 && !activeImage;
   const sourceMode = getGenerationSourceMode(Boolean(activeImage), runReferences.length);
@@ -1447,6 +1467,73 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
       platform,
     });
     setStatus(`${reference.label} selected for the next banner run`);
+  }
+
+  async function enhancePrompt() {
+    if (!canEnhancePrompt) return;
+
+    setIsEnhancingPrompt(true);
+    setError("");
+    setStatus("Enhancing prompt");
+    captureClientEvent("prompt_enhancement_started", {
+      model,
+      target: editTarget,
+      platform,
+      has_current_image: Boolean(activeImage),
+      reference_count: runReferences.length,
+    });
+
+    try {
+      const response = await fetch("/api/enhance-prompt", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt: prompt.trim(),
+          model,
+          target: editTarget,
+          platform,
+          hasCurrentImage: Boolean(activeImage),
+          referenceLabels: runReferences.map((reference) => reference.label),
+        }),
+      });
+      const payload = await readEnhancePromptPayload(response);
+
+      if (!response.ok || !payload.enhancedPrompt) {
+        throw new Error(payload.error || "Prompt enhancement failed.");
+      }
+
+      const nextPrompt =
+        editTarget === "banner"
+          ? syncReferenceInstructions(payload.enhancedPrompt, runReferences)
+          : payload.enhancedPrompt;
+      setPrompt(nextPrompt);
+      setStatus("Prompt enhanced");
+      captureClientEvent("prompt_enhancement_completed", {
+        model,
+        target: editTarget,
+        platform,
+        has_current_image: Boolean(activeImage),
+        reference_count: runReferences.length,
+      });
+      window.setTimeout(() => promptRef.current?.focus(), 0);
+    } catch (enhancementError) {
+      const errorMessage =
+        enhancementError instanceof Error
+          ? enhancementError.message
+          : "Prompt enhancement failed.";
+      setError(errorMessage);
+      setStatus("Prompt needs attention");
+      captureClientEvent("prompt_enhancement_failed", {
+        model,
+        target: editTarget,
+        platform,
+        error_kind: getGenerationErrorKind(errorMessage),
+      });
+    } finally {
+      setIsEnhancingPrompt(false);
+    }
   }
 
   async function generateImage() {
@@ -2066,6 +2153,22 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                   : "Click a reference to call it out in the prompt."}{" "}
                 {sourceSummary}.
               </small>
+              <div className="prompt-tools">
+                <button
+                  className="enhance-prompt-button"
+                  type="button"
+                  onClick={enhancePrompt}
+                  disabled={!canEnhancePrompt}
+                  title={`Enhance for ${selectedModelLabel} and ${config.platformName}`}
+                >
+                  {isEnhancingPrompt ? (
+                    <Loader2 className="spin" size={16} aria-hidden="true" />
+                  ) : (
+                    <Sparkles size={16} aria-hidden="true" />
+                  )}
+                  Enhance Prompt
+                </button>
+              </div>
             </label>
 
             <div className="run-preflight" aria-label="Next generation source">
