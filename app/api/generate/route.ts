@@ -26,6 +26,7 @@ import {
 } from "../../../lib/generation-limiter";
 import { normalizeReferenceLabels } from "../../../lib/generation-request";
 import { getPlatformConfig, type PlatformId } from "../../../lib/platforms";
+import { buildBannerTypographyInstructions } from "../../../lib/platform-prompt-rules";
 import {
   buildTemplateGuideImage,
   getTemplateGuideImageCount,
@@ -188,21 +189,6 @@ function getImageConfig(model: ModelId, target: Target, platform: PlatformId) {
 
 function getModelCost(model: ModelId, imageCount: number) {
   return getImageModelCost(model, imageCount);
-}
-
-function buildBannerTypographyInstructions(platform: PlatformId) {
-  const placementLine =
-    platform === "linkedin"
-      ? "For lower-right credits or tiny metadata on LinkedIn, place them inside the central mobile-safe region, above the bottom 30px crop guard, and away from the far-right side-crop strip."
-      : "For lower-right credits or tiny metadata on X, place them above the mobile action button quiet zone and away from the absolute lower-right corner.";
-
-  return [
-    "If the user requests readable text, typography, quoted copy, taglines, or exact words, treat that copy as a primary subject of the artwork.",
-    "Preserve user-provided text as exactly as possible: same words, casing, punctuation, symbols, and requested accent colors. Do not paraphrase, add extra words, swap symbols, or change punctuation.",
-    "Respect requested typographic hierarchy, line grouping, alignment, and position unless it collides with a platform crop guard or quiet zone.",
-    "Fit text by reducing type size, tracking, or line length rather than clipping it, making it unreadable, or pushing it into crop guards, side crops, avatar/profile overlays, or action-button quiet zones.",
-    placementLine,
-  ];
 }
 
 function getSafeImageMimeType(contentType: string): ImageMimeType | "" {

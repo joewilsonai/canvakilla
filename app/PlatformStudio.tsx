@@ -517,21 +517,17 @@ function LinkedInTemplateLayer({
 function LinkedInBannerPreview({
   config,
   currentImage,
-  editTarget,
   templateVisible,
   dismissedCropTips,
   onDismissCropTip,
-  onMoveActiveToReferences,
   mobile = false,
 }: Pick<
   PlatformPreviewProps,
   | "config"
   | "currentImage"
-  | "editTarget"
   | "templateVisible"
   | "dismissedCropTips"
   | "onDismissCropTip"
-  | "onMoveActiveToReferences"
 > & {
   mobile?: boolean;
 }) {
@@ -551,13 +547,6 @@ function LinkedInBannerPreview({
           mobile={mobile}
           dismissedCropTips={dismissedCropTips}
           onDismissCropTip={onDismissCropTip}
-        />
-      )}
-      {currentImage && editTarget === "banner" && (
-        <MoveToReferencesButton
-          className="preview-move-button banner-move-button"
-          targetName={config.bannerLabel}
-          onClick={onMoveActiveToReferences}
         />
       )}
     </div>
@@ -2430,13 +2419,6 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                       </div>
                     </div>
                   )}
-                  {currentImage && editTarget === "banner" && (
-                    <MoveToReferencesButton
-                      className="preview-move-button banner-move-button"
-                      targetName={config.bannerLabel}
-                      onClick={moveActiveImageToReferences}
-                    />
-                  )}
                 </div>
 
                 <section className="x-real-profile">
@@ -2652,13 +2634,6 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
                         </span>
                       </div>
                     </div>
-                  )}
-                  {currentImage && editTarget === "banner" && (
-                    <MoveToReferencesButton
-                      className="preview-move-button banner-move-button"
-                      targetName={config.bannerLabel}
-                      onClick={moveActiveImageToReferences}
-                    />
                   )}
                 </div>
 

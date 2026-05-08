@@ -825,11 +825,6 @@ button:focus-visible,
   white-space: nowrap;
 }
 
-.banner-move-button {
-  right: 10px;
-  bottom: 10px;
-}
-
 .x-icon-button {
   width: 36px;
   height: 36px;
