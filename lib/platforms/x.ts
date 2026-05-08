@@ -6,7 +6,7 @@ export const xPlatform: PlatformConfig = {
   tabLabel: "X",
   brandEyebrow: "Canva sucks, Introducing:",
   appName: "CanvaKilla.com",
-  quickStartKicker: "Make an X-safe visual",
+  quickStartKicker: "Make a profile banner for X",
   quickStartTitle: "Upload a reference, write the change, hit Iterate.",
   quickStartBody:
     "The prompt already protects the avatar crop, desktop crop, and mobile follow-button zones.",
