@@ -28,7 +28,10 @@ import {
 import { normalizeReferenceLabels } from "../../../lib/generation-request";
 import { getOpenRouterApiKey, OPENROUTER_API_URL } from "../../../lib/openrouter";
 import { getPlatformConfig, type PlatformId } from "../../../lib/platforms";
-import { buildBannerTypographyInstructions } from "../../../lib/platform-prompt-rules";
+import {
+  buildBannerOverlayExclusionInstructions,
+  buildBannerTypographyInstructions,
+} from "../../../lib/platform-prompt-rules";
 import {
   buildTemplateGuideImage,
   getTemplateGuideImageCount,
@@ -259,6 +262,7 @@ function buildBannerInstructions({
       "Never reproduce the internal guide image, blocks, outlines, dashed marks, colors, labels, or crop-template graphics in the final artwork.",
       "Generate standalone LinkedIn banner artwork only, not a screenshot or mockup of LinkedIn.",
       "Do not draw social-media UI chrome inside the image: no Connect, Message, Follow, Open to, tabs, nav icons, handles, verification badges, profile circles, mobile status bars, crop-zone labels, template guides, or app overlay buttons.",
+      ...buildBannerOverlayExclusionInstructions(platform),
       "If a current or reference image already contains LinkedIn or other social app UI elements, remove or repaint those elements as part of the artwork instead of preserving them.",
       sourceLine,
       referenceLine,
@@ -283,6 +287,7 @@ function buildBannerInstructions({
     "Never reproduce the internal guide image, blocks, outlines, dashed marks, colors, labels, or crop-template graphics in the final artwork.",
     "Generate standalone banner artwork only, not a screenshot or mockup of X/Twitter.",
     "Do not draw social-media UI chrome inside the image: no Follow, Message, Post, Subscribe, Edit profile, search, tabs, nav icons, handles, verification badges, profile circles, mobile status bars, crop-zone labels, template guides, or app overlay buttons.",
+    ...buildBannerOverlayExclusionInstructions(platform),
     "If a current or reference image already contains X/Twitter UI elements, remove or repaint those elements as part of the artwork instead of preserving them.",
     sourceLine,
     referenceLine,
@@ -401,6 +406,7 @@ function buildTextOnlyTemplateGuideDescription(platform: PlatformId, target: Tar
       "No internal LinkedIn banner guide image is attached on this run.",
       "Use the written LinkedIn crop rules from the system message as the spatial template.",
       "Keep important content inside the center mobile-safe region, away from side crops, the lower-left profile photo overlap, and the top/bottom crop guards.",
+      "Do not draw a fake profile photo, avatar circle, portrait placeholder, or initials badge in the lower-left profile-photo area.",
       "Do not add crop-zone labels, guide marks, LinkedIn UI chrome, buttons, badges, handles, or app overlay graphics.",
     ].join(" ");
   }
@@ -409,6 +415,7 @@ function buildTextOnlyTemplateGuideDescription(platform: PlatformId, target: Tar
     "No internal X banner guide image is attached on this run.",
     "Use the written X crop rules from the system message as the spatial template.",
     "Keep important content away from the lower-left avatar quiet zone, the lower-right mobile action quiet zone, and the top/bottom crop guards.",
+    "Do not draw a fake profile photo, avatar circle, portrait placeholder, or initials badge in the lower-left avatar area.",
     "Do not add crop-zone labels, guide marks, X/Twitter UI chrome, buttons, badges, handles, or app overlay graphics.",
   ].join(" ");
 }

@@ -1,4 +1,5 @@
 import { IMAGE_MODEL_CONFIGS, type ImageModelId } from "./image-models.ts";
+import { buildBannerOverlayExclusionInstructions } from "./platform-prompt-rules.ts";
 import { getPlatformConfig, type PlatformId } from "./platforms/index.ts";
 import type { EditTarget } from "./platforms/types.ts";
 
@@ -72,6 +73,7 @@ export function buildPromptEnhancerMessages(context: PromptEnhancementContext) {
         sourceLine,
         referenceLine,
         getPlatformSafetyLine(context.platform, context.target),
+        getOverlayExclusionLine(context.platform, context.target),
         getModelGuidanceLine(context.model),
         "Profile context:",
         profileContextLine,
@@ -144,6 +146,14 @@ function getPlatformSafetyLine(platform: PlatformId, target: EditTarget) {
   }
 
   return "For X banners, keep important content away from top/bottom crop guards, the lower-left avatar quiet zone, and the lower-right mobile action button quiet zone.";
+}
+
+function getOverlayExclusionLine(platform: PlatformId, target: EditTarget) {
+  if (target === "profile") {
+    return "Do not add social profile UI chrome, crop rings, badges, handles, or app overlay graphics.";
+  }
+
+  return buildBannerOverlayExclusionInstructions(platform).join(" ");
 }
 
 function getModelGuidanceLine(model: ImageModelId) {
