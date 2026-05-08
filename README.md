@@ -72,6 +72,49 @@ npm test
 
 Open `http://localhost:3000`, upload a reference image, type a prompt, hit Iterate.
 
+## CLI
+
+CanvaKilla also ships a small Node CLI that talks to the same API as the web app.
+It defaults to `https://canvakilla.com`, or you can point it at local dev with
+`--base-url http://localhost:3000`.
+
+```bash
+npm run cli -- help
+
+# Rewrite a prompt without spending an image generation
+npm run cli -- enhance \
+  --platform linkedin \
+  --profile-context-file profile.txt \
+  --prompt "founder banner, premium, use R1 logo" \
+  --reference ./abc-logo.png
+
+# Generate an X banner from a prompt and reference image
+npm run cli -- generate \
+  --platform x \
+  --prompt-file prompt.txt \
+  --reference ./logo.png \
+  --output ./out/x-banner.jpg
+
+# Enhance first, then generate
+npm run cli -- generate \
+  --platform linkedin \
+  --enhance \
+  --profile-context-file profile.txt \
+  --prompt "make banner ideas for my profile" \
+  --output ./out/linkedin-banner.jpg
+```
+
+Direct binary usage also works after linking/installing the package:
+
+```bash
+npm link
+canvakilla enhance --platform x --prompt "make it sharper"
+```
+
+Useful options: `--platform x|linkedin`, `--target banner|profile`,
+`--model <openrouter-model-id>`, `--current <image>`, repeated
+`--reference <image>`, `--json`, and `--print-prompt`.
+
 ### Environment variables
 
 | Variable | Required | Notes |
