@@ -25,6 +25,13 @@ export type GenerateResponse = {
   error?: string;
 };
 
+export type EnhancePromptResponse = {
+  enhancedPrompt?: string;
+  enhancerModel?: string;
+  model?: string;
+  error?: string;
+};
+
 export type UploadImageKind = "banner" | "profile" | "reference";
 
 export type PersistedWorkspace = {

@@ -1,5 +1,5 @@
-import { linkedinPlatform } from "./linkedin";
-import { xPlatform } from "./x";
+import { linkedinPlatform } from "./linkedin.ts";
+import { xPlatform } from "./x.ts";
 
 export type {
   CropTipId,
@@ -7,7 +7,7 @@ export type {
   PlatformConfig,
   PlatformId,
   PlatformSize,
-} from "./types";
+} from "./types.ts";
 
 export const PLATFORM_CONFIGS = {
   x: xPlatform,

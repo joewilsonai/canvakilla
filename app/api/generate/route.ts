@@ -26,6 +26,7 @@ import {
   type RateLimitOptions,
 } from "../../../lib/generation-limiter";
 import { normalizeReferenceLabels } from "../../../lib/generation-request";
+import { getOpenRouterApiKey, OPENROUTER_API_URL } from "../../../lib/openrouter";
 import { getPlatformConfig, type PlatformId } from "../../../lib/platforms";
 import { buildBannerTypographyInstructions } from "../../../lib/platform-prompt-rules";
 import {
@@ -45,7 +46,6 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 180;
 
-const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MAX_REFERENCE_IMAGES_PER_RUN = 12;
 const MAX_SOURCE_IMAGE_BYTES = 2 * 1024 * 1024;
 const MAX_TOTAL_SOURCE_IMAGE_BYTES = 3.6 * 1024 * 1024;
@@ -158,8 +158,6 @@ const ACCEPTED_IMAGE_TYPES = new Set<ImageMimeType>([
   "image/png",
   "image/webp",
 ]);
-
-let warnedMissingOpenRouterKey = false;
 
 function normalizeModelId(model: string): ModelId {
   return normalizeImageModelId(model);
@@ -488,30 +486,6 @@ function getRequestIp(request: Request) {
   }
 
   return "unknown-ip";
-}
-
-function sanitizeApiKey(value?: string) {
-  return (value || "")
-    .replace(/^['"]|['"]$/g, "")
-    .replace(/\\n/g, "")
-    .trim();
-}
-
-function getOpenRouterApiKey() {
-  const apiKey = sanitizeApiKey(
-    process.env.OPENROUTER_API_KEY ||
-      process.env.OPENROUTER_KEY ||
-      process.env.OPENROUTER_TOKEN,
-  );
-
-  if (!apiKey && process.env.NODE_ENV === "production" && !warnedMissingOpenRouterKey) {
-    warnedMissingOpenRouterKey = true;
-    console.warn(
-      "OPENROUTER_API_KEY missing in production; image generation is disabled.",
-    );
-  }
-
-  return apiKey;
 }
 
 function getSigningSecret() {
