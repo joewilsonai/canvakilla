@@ -1276,6 +1276,7 @@ async function generateWithOpenRouter({
   platform,
   prompt,
   referenceLabels,
+  templateGuideImageRequested,
   target,
   distinctId,
 }: {
@@ -1284,6 +1285,7 @@ async function generateWithOpenRouter({
   platform: PlatformId;
   prompt: string;
   referenceLabels: string[];
+  templateGuideImageRequested: boolean;
   target: Target;
   distinctId: string;
 }) {
@@ -1301,6 +1303,7 @@ async function generateWithOpenRouter({
     const hasCurrentImage = images.some((image) => image.label === "current");
     let templateGuideImageAttached = shouldAttachTemplateGuideImageForRun(
       images.length,
+      templateGuideImageRequested,
     );
 
     const sendRequest = async (includeTemplateGuideImage: boolean) => {
@@ -1475,6 +1478,8 @@ export async function POST(request: Request) {
     .getAll("referenceImages")
     .filter((image): image is File => image instanceof File && image.size > 0);
   const rawReferenceLabels = formData.getAll("referenceLabels");
+  const templateGuideImageRequested =
+    String(formData.get("templateGuideImage") || "").toLowerCase() === "true";
 
   if (!prompt) {
     return withSessionCookie(
@@ -1532,6 +1537,7 @@ export async function POST(request: Request) {
     template_guide_rules_used: true,
     template_guide_image_requested: shouldAttachTemplateGuideImageForRun(
       rawImages.length,
+      templateGuideImageRequested,
     ),
   });
 
@@ -1553,7 +1559,10 @@ export async function POST(request: Request) {
   const modelCost = getModelCost(
     model,
     rawImages.length +
-      (shouldAttachTemplateGuideImageForRun(rawImages.length)
+      (shouldAttachTemplateGuideImageForRun(
+        rawImages.length,
+        templateGuideImageRequested,
+      )
         ? getTemplateGuideImageCount()
         : 0),
   );
@@ -1758,6 +1767,7 @@ export async function POST(request: Request) {
       platform,
       prompt,
       referenceLabels,
+      templateGuideImageRequested,
       target,
       distinctId: getAnalyticsDistinctId(session.id),
     });

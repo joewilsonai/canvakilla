@@ -5,9 +5,11 @@ import {
   shouldRetryWithoutTemplateGuideImage,
 } from "../lib/template-guide-policy.ts";
 
-test("prompt-only generations do not attach the internal template guide image", () => {
+test("internal template guide image is opt-in even when sources are present", () => {
   assert.equal(shouldAttachTemplateGuideImageForRun(0), false);
-  assert.equal(shouldAttachTemplateGuideImageForRun(1), true);
+  assert.equal(shouldAttachTemplateGuideImageForRun(1), false);
+  assert.equal(shouldAttachTemplateGuideImageForRun(1, true), true);
+  assert.equal(shouldAttachTemplateGuideImageForRun(0, true), false);
 });
 
 test("guide-image provider rejections are retried without the guide image", () => {

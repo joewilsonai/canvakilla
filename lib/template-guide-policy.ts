@@ -1,5 +1,8 @@
-export function shouldAttachTemplateGuideImageForRun(sourceImageCount: number) {
-  return sourceImageCount > 0;
+export function shouldAttachTemplateGuideImageForRun(
+  sourceImageCount: number,
+  requested = false,
+) {
+  return requested && sourceImageCount > 0;
 }
 
 export function shouldRetryWithoutTemplateGuideImage(status: number) {
