@@ -17,6 +17,9 @@ export default function Home() {
           canvakilla — banner maker that knows where every platform actually crops.
           because canva doesn&apos;t.
         </p>
+        <p className="platform-picker-subtagline">
+          killing bloated canva one tool at a time.
+        </p>
         <div className="platform-picker-actions" aria-label="Choose a platform">
           {PLATFORM_IDS.map((platformId) => {
             const platform = PLATFORM_CONFIGS[platformId];
