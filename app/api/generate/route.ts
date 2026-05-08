@@ -34,6 +34,10 @@ import {
 } from "../../../lib/platform-template-guides";
 import { captureServerEvent } from "../../../lib/posthog-server";
 import {
+  getProviderImageValidationPolicy,
+  type ProviderImageValidationPolicy,
+} from "../../../lib/provider-image-normalization";
+import {
   shouldAttachTemplateGuideImageForRun,
   shouldRetryWithoutTemplateGuideImage,
 } from "../../../lib/template-guide-policy";
@@ -1053,6 +1057,9 @@ function validateProviderImageBuffer(
   advertisedMimeType: string,
   target: Target,
   platform: PlatformId,
+  policy: ProviderImageValidationPolicy = getProviderImageValidationPolicy(
+    "normalized-output",
+  ),
 ) {
   const sniffedMimeType = sniffImageMimeType(imageBuffer);
   const safeAdvertisedMimeType = getSafeImageMimeType(advertisedMimeType);
@@ -1075,7 +1082,9 @@ function validateProviderImageBuffer(
     maxDimension: MAX_PROVIDER_IMAGE_DIMENSION,
     maxPixels: MAX_PROVIDER_IMAGE_PIXELS,
   });
-  assertTargetAspectRatio(target, dimensions as ImageDimensions, platform);
+  if (policy.enforceTargetAspectRatio) {
+    assertTargetAspectRatio(target, dimensions as ImageDimensions, platform);
+  }
 
   return {
     mimeType,
@@ -1089,7 +1098,13 @@ async function normalizeProviderImageResult(
   target: Target,
   platform: PlatformId,
 ) {
-  validateProviderImageBuffer(imageBuffer, advertisedMimeType, target, platform);
+  validateProviderImageBuffer(
+    imageBuffer,
+    advertisedMimeType,
+    target,
+    platform,
+    getProviderImageValidationPolicy("provider-source"),
+  );
   const platformConfig = getPlatformConfig(platform);
 
   const resize =
