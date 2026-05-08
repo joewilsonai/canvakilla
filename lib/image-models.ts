@@ -1,3 +1,5 @@
+import type { PlatformId } from "./platforms/types.ts";
+
 export const DEFAULT_IMAGE_MODEL_ID = "google/gemini-3.1-flash-image-preview";
 export const DEFAULT_IMAGE_MODEL_FETCH_TIMEOUT_MS = 70_000;
 
@@ -7,6 +9,9 @@ export const IMAGE_MODEL_CONFIGS = {
     costWeight: 2,
     imageSize: "2K",
     label: "Nano Banana 2",
+    platformBannerAspectRatios: {
+      linkedin: "4:1",
+    },
     profileAspectRatio: "1:1",
   },
   "google/gemini-3-pro-image-preview": {
@@ -60,4 +65,19 @@ export function getImageModelCost(model: ImageModelId, imageCount: number) {
 export function getImageModelFetchTimeoutMs(model: ImageModelId) {
   const config = IMAGE_MODEL_CONFIGS[model] as { fetchTimeoutMs?: number };
   return config.fetchTimeoutMs || DEFAULT_IMAGE_MODEL_FETCH_TIMEOUT_MS;
+}
+
+export function getImageModelAspectRatio(
+  model: ImageModelId,
+  target: "banner" | "profile",
+  platform: PlatformId,
+) {
+  const config = IMAGE_MODEL_CONFIGS[model];
+  if (target === "profile") return config.profileAspectRatio;
+  const platformAspectRatios =
+    ("platformBannerAspectRatios" in config
+      ? config.platformBannerAspectRatios
+      : {}) as Partial<Record<PlatformId, string | null>>;
+
+  return platformAspectRatios[platform] ?? config.bannerAspectRatio;
 }
