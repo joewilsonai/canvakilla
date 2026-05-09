@@ -110,3 +110,37 @@ Under the divider, add smaller muted-gray monospace text:
     page.getByText("Typography-safe banner rendered from the prompt"),
   ).not.toBeVisible();
 });
+
+for (const platformPath of ["/x", "/linkedin"] as const) {
+  test(`${platformPath} banner mode wins over profile-zone wording`, async ({
+    page,
+  }) => {
+    let apiRequestBody = "";
+
+    await page.route("**/api/generate", async (route) => {
+      apiRequestBody = route.request().postDataBuffer()?.toString("utf8") || "";
+      await route.fulfill({
+        contentType: "application/json",
+        status: 200,
+        body: JSON.stringify({
+          imageBase64: TINY_PNG,
+          mimeType: "image/png",
+          model: "google/gemini-3.1-flash-image-preview",
+          provider: "openrouter",
+        }),
+      });
+    });
+
+    await page.goto(platformPath);
+    await page.getByLabel(/Next .* banner edit/i).fill(`
+Make this banner more premium.
+Leave the lower-left profile photo overlay and avatar quiet zone completely empty.
+Do not add a fake profile picture, avatar circle, or headshot placeholder.
+    `);
+    await page.getByRole("button", { name: /Create Banner/i }).click();
+
+    await expect(page.getByText("Banner result loaded for next iteration")).toBeVisible();
+    expect(apiRequestBody).toContain('name="target"');
+    expect(apiRequestBody).toContain("banner");
+  });
+}
