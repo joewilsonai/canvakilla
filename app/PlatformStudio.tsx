@@ -58,7 +58,6 @@ import { captureClientEvent } from "../lib/posthog-client";
 import {
   drawBannerProof,
   drawProfileProof,
-  getPromptTargetHint,
 } from "./studio/canvas-renderers";
 import {
   dataUrlToFile,
@@ -1546,23 +1545,6 @@ export default function PlatformStudio({ platform }: { platform: PlatformId }) {
 
   async function generateImage() {
     if (!canGenerate) return;
-
-    const promptTargetHint = getPromptTargetHint(prompt);
-    if (promptTargetHint && promptTargetHint !== editTarget) {
-      const hintedTargetName =
-        promptTargetHint === "profile" ? config.profileLabel : config.bannerLabel;
-      setError(
-        `This prompt looks like a ${hintedTargetName}. Switch to ${
-          promptTargetHint === "profile" ? "Profile" : "Banner"
-        } mode first.`,
-      );
-      captureClientEvent("wrong_mode_prompt_blocked", {
-        target: editTarget,
-        platform,
-      });
-      setStatus("Wrong edit mode");
-      return;
-    }
 
     setIsGenerating(true);
     setError("");
