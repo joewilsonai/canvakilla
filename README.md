@@ -1,76 +1,81 @@
 <div align="center">
 
-<img src="./public/og-image-v2.png" alt="CanvaKilla — the banner maker that knows where every platform actually crops" width="100%" />
+<img src="./public/og-image-v2.png" alt="CanvaKilla: the banner maker that knows where every platform actually crops" width="100%" />
 
-# 🎨 CanvaKilla
+# CanvaKilla
 
 **The banner maker that knows where every platform actually crops.**
 
-Built because Canva kept hiding banner text behind avatars, mobile follow buttons, and the 60-pixel strips X clips off the top and bottom on certain displays.
-
-[![Live](https://img.shields.io/badge/Live-canvakilla.com-22c55e)](https://canvakilla.com)
-[![Built_in_public](https://img.shields.io/badge/Built_in_public_on-X-1da1f2?logo=x&logoColor=white)](https://x.com/joewilsonai)
-[![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=next.js)](https://nextjs.org)
-[![Vercel](https://img.shields.io/badge/Hosted-Vercel-000000?logo=vercel)](https://vercel.com)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
-
-[**🔗 Try it live →**](https://canvakilla.com)
+[Try it at canvakilla.com](https://canvakilla.com)
 
 </div>
 
----
+CanvaKilla makes X and LinkedIn banners and profile pictures with AI image models. Every prompt carries the platform's crop rules, so your face, logo and tagline stay clear of the avatar circle, the mobile buttons and the strips the platform trims off.
 
-## Why this exists
+It is for anyone who has watched a banner's text vanish behind their own profile picture.
 
-Canva's banner templates don't know where X (Twitter) crops your design.
+Built because Canva kept hiding banner text behind avatars, mobile follow buttons, and the 60-pixel strips X clips off the top and bottom on certain displays.
 
-- **Avatar circle** overlaps the lower-left of the banner — anything important there gets covered
-- **Mobile Follow / Edit profile / Message buttons** sit on top of the lower-right
-- **X clips ~60 pixels off the top and bottom** on certain display sizes
+## What it does
 
-Every banner template you load in Canva ignores all three. Your text ends up under your face. Your logo gets buried under a Follow button. Your tagline disappears behind an iPhone notch.
+- **X and LinkedIn.** `/x` exports a 1500x500 banner, `/linkedin` a 1584x396 banner. Both export a 1024x1024 profile picture.
+- **Crop guards in every prompt.** X: avatar quiet zone (lower left), mobile action zone (lower right), 60 px top and bottom strips. LinkedIn: profile photo overlay (lower left), mobile side crops, thin top and bottom strips, and a central safe area for text.
+- **Live preview.** A desktop and mobile mock of the profile page shows where the avatar, buttons and crops land on your design.
+- **Reference images.** Upload images, refer to them as `R1`, `R2` in your prompt, and iterate on the current result.
+- **Prompt enhancer.** Paste your bio, links or posts and it rewrites your prompt for the chosen model and platform.
+- **Image models through OpenRouter:** Nano Banana 2 (default), Nano Banana Pro, GPT Image 2 and Nano Banana.
+- **Proof export.** Download the image, or a proof with the crop guides drawn on.
 
-**CanvaKilla bakes those crop guards into every prompt** so the AI image model places content where it will actually be visible.
+## Run it locally
 
-## How it works
-
-CanvaKilla is a Next.js app that talks to image-generation models through OpenRouter (so spending stays capped on a single API key). Every system prompt includes:
-
-| Guard | What it does |
-|---|---|
-| **Avatar quiet zone** | Keep faces, logos, and text out of the lower-left 34% × 46% |
-| **Mobile-action overlay** | Keep the lower-right 200 × 100 px visually quiet for the Follow/Message buttons |
-| **Edge crop strips** | No critical detail in the top 60 px / bottom 60 px |
-| **3:1 aspect** | Final export at 1500 × 500 (X's banner dimensions) |
-
-The result: a banner that looks intentional on desktop **and** mobile, with your face and tagline still visible after the avatar lands.
-
-## Features
-
-- 🖼️ **Reference-driven iteration** — upload reference images, label them `R1`, `R2`, etc., then iterate prompts that mention them by name
-- 📐 **Two modes** — Banner (3:1 landscape) and Profile picture (1:1 square)
-- 👁️ **Live X-preview canvas** — switches between desktop and mobile X layouts so you see the avatar circle, mobile-action overlay, and crop strips fall on your design in real time
-- 🎨 **Multiple model providers** — GPT Image 2, Imagen 4 Ultra, Flux Pro, Seedream 4
-- 💾 **One-click export** — properly sized for X's banner spec out of the box
-
-## Quick start
+You need Node 22 and an [OpenRouter](https://openrouter.ai) API key.
 
 ```bash
 git clone https://github.com/joewilsonai/canvakilla
 cd canvakilla
-npm install
-cp .env.example .env.local   # add OPENROUTER_API_KEY
+npm ci
+cp .env.example .env.local   # then set OPENROUTER_API_KEY
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000/x](http://localhost:3000/x) or [http://localhost:3000/linkedin](http://localhost:3000/linkedin).
 
-## Stack
+`OPENROUTER_API_KEY` is the only value you need to generate images. The rest of `.env.example` is optional:
 
-- **Next.js 15** (App Router) + **TypeScript** + **Tailwind**
-- **OpenRouter** for image-generation provider routing
-- **Vercel** for deploy
+| Variable | What it is for |
+|---|---|
+| `CANVAKILLA_SESSION_SECRET` | Signs the session cookie. Set a long random string in production. |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Shared rate limits across server instances. Without them, limits are kept in memory. |
+| `GENERATION_*`, `MAX_ACTIVE_GENERATIONS` | Per-session and per-IP request and cost limits. |
+| `NEXT_PUBLIC_POSTHOG_*` | Product analytics. Leave blank to turn it off. |
 
-## License
+## Command line
 
-MIT — fork it, kill more design tools.
+The repo also ships a small CLI. By default it calls the hosted API at canvakilla.com; point it at your own server with `--base-url` or `CANVAKILLA_BASE_URL`.
+
+```bash
+npm run cli -- help
+npm run cli -- enhance --platform linkedin --prompt "founder banner, premium"
+npm run cli -- generate --platform x --prompt-file prompt.txt --reference logo.png --output x-banner.jpg
+```
+
+Run `npm run cli -- <command> --help` for every option.
+
+## Development
+
+```bash
+npm run typecheck:strict   # TypeScript
+npm test                   # unit tests (node --test)
+npm run build              # production build
+npm run test:ui            # Playwright smoke tests, run after a build
+```
+
+The UI tests start the production server, so run `npm run build` first, and install the browser once with `npx playwright install chromium`. CI runs all of these, plus `npm audit`, on every pull request and on pushes to `main`.
+
+Built with Next.js 15, React 19 and TypeScript, hosted on Vercel.
+
+## Status
+
+Last updated May 2026. Checked in November 2026: `npm ci`, `npm run typecheck:strict`, `npm test` (26 tests) and `npm run build` pass on `main`, and canvakilla.com is up.
+
+There is no licence file in this repository yet.
