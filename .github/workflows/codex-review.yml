@@ -1,0 +1,134 @@
+name: Codex PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    runs-on: [self-hosted, codex-mac]
+    timeout-minutes: 20
+    if: github.actor != 'dependabot[bot]'
+
+    steps:
+      - name: Checkout PR head with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Compute diff stats
+        id: diff
+        run: |
+          base="origin/${{ github.event.pull_request.base.ref }}"
+          git fetch origin "${{ github.event.pull_request.base.ref }}" --depth=1
+          echo "diff_size=$(git diff "$base"...HEAD | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+          echo "changed_files=$(git diff --name-only "$base"...HEAD | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if diff too large
+        if: steps.diff.outputs.diff_size != '' && fromJSON(steps.diff.outputs.diff_size) > 8000
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body "🤖 **Codex review skipped** — diff is ${{ steps.diff.outputs.diff_size }} lines (cap: 8000). Review locally with: \`~/claude-ops/scripts/core/codex-review.sh <files>\`"
+          exit 0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run codex review on changed files
+        id: review
+        if: steps.diff.outputs.diff_size != '' && fromJSON(steps.diff.outputs.diff_size) <= 8000
+        env:
+          PATH: ${{ env.PATH }}:/Users/joewilson/.openclaw/bin:/Users/joewilson/.codex/bin:/opt/homebrew/bin
+        run: |
+          set -uo pipefail
+          REVIEW_FILE="$RUNNER_TEMP/codex-review.json"
+          # Build absolute paths to changed files within this PR checkout
+          IFS=' ' read -r -a FILES <<< "${{ steps.diff.outputs.changed_files }}"
+          ABS_FILES=()
+          for f in "${FILES[@]}"; do
+            if [ -f "$f" ]; then
+              ABS_FILES+=("$(pwd)/$f")
+            fi
+          done
+          if [ "${#ABS_FILES[@]}" -eq 0 ]; then
+            echo '{"verdict":"NO_FILES","summary":"No reviewable files (deletions only or non-existent paths)","findings":[]}' > "$REVIEW_FILE"
+          else
+            ~/claude-ops/scripts/core/codex-review.sh "${ABS_FILES[@]}" 2>&1 | tee "$RUNNER_TEMP/codex-raw.log" | tail -1 > "$REVIEW_FILE" || true
+          fi
+          echo "review_file=$REVIEW_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Format and post review comment
+        if: steps.diff.outputs.diff_size != '' && fromJSON(steps.diff.outputs.diff_size) <= 8000
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          REVIEW="${{ steps.review.outputs.review_file }}"
+          if [ ! -s "$REVIEW" ]; then
+            gh pr comment "${{ github.event.pull_request.number }}" \
+              --body "🤖 **Codex review** — review run produced no JSON output. See workflow logs."
+            exit 0
+          fi
+
+          # Parse the review JSON. Fall back to raw if not valid JSON.
+          if ! jq -e . "$REVIEW" >/dev/null 2>&1; then
+            BODY="🤖 **Codex review** — output was not valid JSON. Raw:\n\n\`\`\`\n$(head -c 4000 "$REVIEW")\n\`\`\`"
+            gh pr comment "${{ github.event.pull_request.number }}" --body "$BODY"
+            exit 0
+          fi
+
+          VERDICT=$(jq -r '.verdict // "UNKNOWN"' "$REVIEW")
+          SUMMARY=$(jq -r '.summary // ""' "$REVIEW")
+          FINDINGS_COUNT=$(jq '.findings | length' "$REVIEW")
+          HIGH=$(jq '[.findings[]? | select(.severity=="HIGH")] | length' "$REVIEW")
+          MED=$(jq '[.findings[]? | select(.severity=="MEDIUM")] | length' "$REVIEW")
+          LOW=$(jq '[.findings[]? | select(.severity=="LOW")] | length' "$REVIEW")
+
+          ICON="✅"
+          SHOULD_FAIL="false"
+          if [ "$VERDICT" = "BLOCK" ] || [ "$VERDICT" = "REQUEST_CHANGES" ]; then
+            ICON="🚨"
+            SHOULD_FAIL="true"
+          elif [ "$VERDICT" = "ISSUES_FOUND" ] && [ "$HIGH" -gt 0 ]; then
+            ICON="🚨"
+          elif [ "$FINDINGS_COUNT" -gt 0 ]; then
+            ICON="⚠️"
+          fi
+
+          BODY_FILE="$RUNNER_TEMP/comment.md"
+          {
+            echo "## $ICON Codex review — $VERDICT"
+            echo ""
+            echo "**Summary:** $SUMMARY"
+            echo ""
+            echo "**Findings:** $FINDINGS_COUNT total · 🚨 $HIGH high · ⚠️ $MED medium · 💡 $LOW low"
+            echo ""
+            if [ "$FINDINGS_COUNT" -gt 0 ]; then
+              echo "<details><summary>Click to expand findings</summary>"
+              echo ""
+              jq -r '.findings[] |
+                "### \(.severity) — `\(.file)`\(if .line and .line > 0 then ":" + (.line|tostring) else "" end)\n\n**Issue:** \(.issue)\n\n**Fix:** \(.fix)\n\n---\n"' "$REVIEW"
+              echo ""
+              echo "</details>"
+            fi
+            echo ""
+            echo "<sub>🤖 reviewed by codex-mac (self-hosted) · runner free via Joe's ChatGPT plan</sub>"
+          } > "$BODY_FILE"
+
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file "$BODY_FILE"
+
+          # Annotate run with summary
+          {
+            echo "## Codex review summary"
+            cat "$BODY_FILE"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$SHOULD_FAIL" = "true" ]; then
+            echo "::error title=Codex review verdict::$VERDICT - $SUMMARY"
+            exit 1
+          fi
